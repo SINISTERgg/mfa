@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: mfa-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=sqlite:///mfa_auth.db
+    volumes:
+      - ./backend:/app
+      - backend-data:/app/stored_faces
+    networks:
+      - mfa-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    container_name: mfa-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - mfa-network
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+
+networks:
+  mfa-network:
+    driver: bridge

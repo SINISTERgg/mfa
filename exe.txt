@@ -1,0 +1,29 @@
+# Navigate to project
+cd C:\Hoysala\Projects\mfa-authentication-system
+
+# Setup backend
+cd backend
+
+# Activate virtual environment
+venv\Scripts\activate
+
+# Verify Flask is installed
+python -c "import flask; print('Flask installed:', flask.__version__)"
+
+# If Flask is not installed
+pip install -r requirements.txt
+
+# Copy environment file
+copy .env.example .env
+
+# Create database
+python -c "from app import create_app; from models import db; app = create_app(); app.app_context().push(); db.create_all(); print('Database created!')"
+
+# Start backend server
+python app.py
+
+
+
+
+
+

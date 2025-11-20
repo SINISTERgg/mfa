@@ -1,0 +1,101 @@
+.qrcode-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2rem;
+  background: #f9fafb;
+  border-radius: 12px;
+  border: 2px solid #e5e7eb;
+}
+
+.qrcode-container {
+  padding: 1.5rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.qrcode-instructions {
+  text-align: center;
+}
+
+.qrcode-instructions p {
+  color: #374151;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.qrcode-instructions ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.qrcode-instructions li {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.secret-key {
+  width: 100%;
+  text-align: center;
+}
+
+.secret-key p {
+  color: #374151;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.secret-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  justify-content: center;
+}
+
+.secret-box code {
+  font-family: 'Courier New', monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1f2937;
+  letter-spacing: 0.1em;
+}
+
+.btn-copy {
+  padding: 0.5rem 1rem;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.btn-copy:hover {
+  background: #5a67d8;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 600px) {
+  .qrcode-display {
+    padding: 1rem;
+  }
+
+  .secret-box {
+    flex-direction: column;
+  }
+
+  .secret-box code {
+    font-size: 0.9rem;
+  }
+}

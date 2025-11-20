@@ -1,0 +1,39 @@
+@"
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS Files
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+venv/
+.env.example    
+.flaskenv
+instance/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Project specific
+instance/
+stored_face_data/
+stored_voice_data/
+voice_data/
+
+dlib-19.24.1-cp311-win_amd64.whl
+"@ | Out-File -FilePath .gitignore -Encoding utf8

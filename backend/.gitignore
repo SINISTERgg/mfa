@@ -1,0 +1,57 @@
+@"
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Flask
+instance/
+.webassets-cache
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment Variables
+.env
+.env.example
+.env.local
+.flaskenv
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# Stored Data
+stored_face_data/
+stored_voice_data/
+voice_data/
+data/
+instance/
+pretrained_models/
+tests/
+voice_data/
+
+
+# Models
+pretrained_models/
+*.h5
+*.pkl
+*.pth
+
+# Migrations
+migrations/versions/*.pyc
+"@ | Out-File -FilePath backend\.gitignore -Encoding utf8
