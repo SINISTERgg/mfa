@@ -313,16 +313,21 @@ def enroll_otp():
 @user_bp.route('/enroll/gesture', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def enroll_gesture():
-    """Enroll gesture pattern"""
+    """Enroll gesture pattern with STRICT verification"""
     if request.method == 'OPTIONS':
         return '', 200
     
     try:
+        print("\n" + "="*60)
+        print("✋ [GESTURE ENROLL] Starting gesture enrollment")
+        
         user_id = get_jwt_identity()
         user = User.query.get(user_id)
         
         if not user:
             return jsonify({'error': 'User not found'}), 404
+        
+        print(f"👤 [USER] {user.username} (ID: {user.id})")
         
         data = request.get_json()
         gesture_data = data.get('gesture')
@@ -330,11 +335,44 @@ def enroll_gesture():
         if not gesture_data:
             return jsonify({'error': 'Gesture data is required'}), 400
         
-        import json
-        user.gesture_features = json.dumps(gesture_data)
+        print(f"📊 [POINTS] {len(gesture_data.get('points', []))} points")
+        
+        # Import gesture service
+        try:
+            from services.gesture_recognition import gesture_service
+        except ImportError:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "gesture_recognition_service",
+                os.path.join(backend_dir, "services", "gesture_recognition.py")
+            )
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            gesture_service = module.gesture_service
+        
+        # Extract features
+        print("🔍 [EXTRACT] Extracting gesture features...")
+        features, error, saved_path = gesture_service.extract_features(
+            gesture_data,
+            user_id=user.id,
+            username=user.username,
+            save_pattern=True
+        )
+        
+        if error:
+            print(f"❌ [ERROR] {error}")
+            return jsonify({'error': error}), 400
+        
+        # Serialize and store
+        print("💾 [SAVE] Saving features to database...")
+        user.gesture_features = gesture_service.serialize_features(features)
         user.gesture_enrolled = True
         user.gesture_enrolled_at = datetime.utcnow()
+        
         db.session.commit()
+        
+        print("✅ [SUCCESS] Gesture enrolled successfully")
+        print("="*60 + "\n")
         
         return jsonify({
             'message': 'Gesture enrolled successfully',
@@ -343,7 +381,12 @@ def enroll_gesture():
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ [ERROR] {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print("="*60 + "\n")
         return jsonify({'error': str(e)}), 500
+
 
 # ===========================
 # KEYSTROKE DYNAMICS

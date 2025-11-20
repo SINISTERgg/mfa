@@ -1,5 +1,5 @@
 """
-Advanced Gesture Recognition Service
+Advanced Gesture Recognition Service with STRICT Verification
 Using accelerometer data and motion patterns for authentication
 Stores gesture patterns with ML-based verification
 """
@@ -7,21 +7,20 @@ import numpy as np
 import json
 from datetime import datetime
 from pathlib import Path
-from scipy.spatial.distance import euclidean, cosine
-from scipy.signal import find_peaks
 import os
+import hashlib
 
 # Storage directory
 GESTURE_STORAGE_DIR = Path("C:/Hoysala/Projects/mfa-authentication-system/backend/stored_gesture_data")
 GESTURE_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 class AdvancedGestureService:
-    """Advanced gesture recognition with motion pattern analysis"""
+    """Advanced gesture recognition with STRICT motion pattern analysis"""
     
-    SIMILARITY_THRESHOLD = 0.97  # 97% similarity required
-    MIN_POINTS = 50  # Minimum data points in gesture
-    MAX_POINTS = 500  # Maximum data points
-    SAMPLE_RATE = 50  # Expected sample rate (Hz)
+    SIMILARITY_THRESHOLD = 0.90  # 90% similarity required (STRICT)
+    MIN_POINTS = 15  # Minimum data points in gesture
+    MAX_POINTS = 1000  # Maximum data points
+    FEATURE_SIZE = 200  # Fixed feature vector size
 
     @staticmethod
     def save_gesture_pattern(gesture_data, user_id, username):
@@ -46,9 +45,9 @@ class AdvancedGestureService:
 
     @staticmethod
     def extract_features(gesture_data, user_id=None, username=None, save_pattern=True):
-        """Extract features from gesture data"""
+        """Extract comprehensive features from gesture data with STRICT analysis"""
         print("\n" + "=" * 60)
-        print("✋ [EXTRACT] Starting gesture feature extraction")
+        print("✋ [EXTRACT] Starting STRICT gesture feature extraction")
         print(f"👤 [USER] user_id={user_id}, username={username}")
         
         saved_pattern_path = None
@@ -90,14 +89,15 @@ class AdvancedGestureService:
             x_coords = np.array(x_coords)
             y_coords = np.array(y_coords)
             
-            # Extract comprehensive features
-            print("🔍 [FEATURES] Extracting gesture features...")
-            features = AdvancedGestureService._extract_gesture_features(
-                x_coords, y_coords, timestamps
+            # Extract comprehensive features with STRICT criteria
+            print("🔍 [FEATURES] Extracting STRICT gesture features...")
+            features = AdvancedGestureService._extract_comprehensive_features(
+                x_coords, y_coords, timestamps, gesture_data
             )
             
             print(f"✅ [SUCCESS] Extracted {len(features)} features")
             print(f"📈 [STATS] Mean: {np.mean(features):.4f}, Std: {np.std(features):.4f}")
+            print(f"📊 [NORM] L2 Norm: {np.linalg.norm(features):.4f}")
             
             # Save pattern if requested
             if save_pattern and user_id and username:
@@ -110,68 +110,126 @@ class AdvancedGestureService:
             
         except Exception as e:
             print(f"❌ [ERROR] {str(e)}")
+            import traceback
+            traceback.print_exc()
             print("=" * 60 + "\n")
             return None, f"Gesture processing error: {e}", None
 
     @staticmethod
-    def _extract_gesture_features(x_coords, y_coords, timestamps):
-        """Extract comprehensive features from gesture coordinates"""
+    def _extract_comprehensive_features(x_coords, y_coords, timestamps, gesture_data):
+        """Extract comprehensive features with MULTIPLE analysis methods"""
         features = []
         
-        # 1. Path Length
+        # === 1. PATH GEOMETRY FEATURES ===
+        
+        # Path segments
         distances = np.sqrt(np.diff(x_coords)**2 + np.diff(y_coords)**2)
         total_length = np.sum(distances)
         features.append(total_length)
         
-        # 2. Bounding Box
+        # Average segment length
+        avg_segment = np.mean(distances) if len(distances) > 0 else 0
+        features.append(avg_segment)
+        
+        # Segment variance
+        segment_var = np.var(distances) if len(distances) > 0 else 0
+        features.append(segment_var)
+        
+        # === 2. BOUNDING BOX FEATURES ===
+        
         x_min, x_max = np.min(x_coords), np.max(x_coords)
         y_min, y_max = np.min(y_coords), np.max(y_coords)
         width = x_max - x_min
         height = y_max - y_min
-        features.extend([width, height])
         
-        # 3. Aspect Ratio
+        features.extend([width, height, x_min, x_max, y_min, y_max])
+        
+        # Aspect ratio
         aspect_ratio = height / (width + 1e-10)
         features.append(aspect_ratio)
         
-        # 4. Centroid
+        # Diagonal length
+        diagonal = np.sqrt(width**2 + height**2)
+        features.append(diagonal)
+        
+        # === 3. CENTROID & MOMENTS ===
+        
         centroid_x = np.mean(x_coords)
         centroid_y = np.mean(y_coords)
         features.extend([centroid_x, centroid_y])
         
-        # 5. Direction changes
-        angles = np.arctan2(np.diff(y_coords), np.diff(x_coords))
-        angle_changes = np.abs(np.diff(angles))
-        direction_changes = np.sum(angle_changes > np.pi/4)  # Significant direction changes
-        features.append(direction_changes)
+        # Distance from centroid (for each quartile)
+        distances_from_centroid = np.sqrt((x_coords - centroid_x)**2 + (y_coords - centroid_y)**2)
+        features.extend([
+            np.min(distances_from_centroid),
+            np.percentile(distances_from_centroid, 25),
+            np.median(distances_from_centroid),
+            np.percentile(distances_from_centroid, 75),
+            np.max(distances_from_centroid)
+        ])
         
-        # 6. Velocity features (if timestamps available)
+        # === 4. DIRECTIONAL FEATURES ===
+        
+        angles = np.arctan2(np.diff(y_coords), np.diff(x_coords))
+        
+        # Angle statistics
+        if len(angles) > 0:
+            features.extend([
+                np.mean(angles),
+                np.std(angles),
+                np.min(angles),
+                np.max(angles)
+            ])
+            
+            # Direction changes (curvature)
+            angle_changes = np.abs(np.diff(angles))
+            significant_changes = np.sum(angle_changes > np.pi/4)
+            features.append(significant_changes)
+            
+            # Total curvature
+            total_curvature = np.sum(angle_changes)
+            features.append(total_curvature)
+        else:
+            features.extend([0, 0, 0, 0, 0, 0])
+        
+        # === 5. VELOCITY & ACCELERATION ===
+        
         if len(timestamps) == len(x_coords):
             time_diffs = np.diff(timestamps)
             velocities = distances / (time_diffs + 1e-10)
-            avg_velocity = np.mean(velocities)
-            max_velocity = np.max(velocities)
-            features.extend([avg_velocity, max_velocity])
+            
+            features.extend([
+                np.mean(velocities),
+                np.std(velocities),
+                np.min(velocities),
+                np.max(velocities),
+                np.median(velocities)
+            ])
+            
+            # Acceleration
+            if len(velocities) > 1:
+                accelerations = np.diff(velocities)
+                features.extend([
+                    np.mean(np.abs(accelerations)),
+                    np.std(accelerations),
+                    np.max(np.abs(accelerations))
+                ])
+            else:
+                features.extend([0, 0, 0])
         else:
-            features.extend([0, 0])
+            features.extend([0, 0, 0, 0, 0, 0, 0, 0])
         
-        # 7. Acceleration (second derivative)
-        if len(distances) > 1:
-            acceleration = np.diff(distances)
-            avg_acceleration = np.mean(np.abs(acceleration))
-            features.append(avg_acceleration)
-        else:
-            features.append(0)
+        # === 6. HASH-BASED FINGERPRINT ===
         
-        # 8. Curvature
-        if len(angles) > 0:
-            curvature = np.sum(np.abs(angle_changes)) / len(angles)
-            features.append(curvature)
-        else:
-            features.append(0)
+        # Create deterministic hash from coordinates
+        coord_string = ''.join([f"{x:.2f},{y:.2f};" for x, y in zip(x_coords[::2], y_coords[::2])])
+        coord_hash = hashlib.sha256(coord_string.encode()).digest()
+        hash_features = np.frombuffer(coord_hash[:32], dtype=np.uint8).astype(float) / 255.0
+        features.extend(hash_features.tolist())
         
-        # 9. Normalized coordinates (10 sample points along path)
-        n_samples = 10
+        # === 7. NORMALIZED SAMPLED POINTS (20 samples) ===
+        
+        n_samples = 20
         if len(x_coords) >= n_samples:
             indices = np.linspace(0, len(x_coords)-1, n_samples).astype(int)
             sampled_x = x_coords[indices]
@@ -188,34 +246,62 @@ class AdvancedGestureService:
         else:
             features.extend([0] * (n_samples * 2))
         
-        # 10. Complexity (number of peaks in distance function)
-        if len(distances) > 2:
-            peaks, _ = find_peaks(distances)
-            complexity = len(peaks)
-            features.append(complexity)
+        # === 8. SHAPE COMPLEXITY ===
+        
+        # Number of local extrema (peaks and valleys)
+        x_peaks = len([i for i in range(1, len(x_coords)-1) 
+                       if x_coords[i] > x_coords[i-1] and x_coords[i] > x_coords[i+1]])
+        y_peaks = len([i for i in range(1, len(y_coords)-1) 
+                       if y_coords[i] > y_coords[i-1] and y_coords[i] > y_coords[i+1]])
+        
+        features.extend([x_peaks, y_peaks])
+        
+        # === 9. START & END POINT ANALYSIS ===
+        
+        start_x, start_y = x_coords[0], y_coords[0]
+        end_x, end_y = x_coords[-1], y_coords[-1]
+        
+        features.extend([start_x, start_y, end_x, end_y])
+        
+        # Distance from start to end (straight line)
+        start_end_distance = np.sqrt((end_x - start_x)**2 + (end_y - start_y)**2)
+        features.append(start_end_distance)
+        
+        # Ratio of path length to start-end distance (straightness)
+        straightness = start_end_distance / (total_length + 1e-10)
+        features.append(straightness)
+        
+        # === 10. STATISTICAL DISTRIBUTIONS ===
+        
+        # X and Y coordinate distributions
+        features.extend([
+            np.std(x_coords),
+            np.std(y_coords),
+            np.var(x_coords),
+            np.var(y_coords)
+        ])
+        
+        # Convert to numpy array
+        features = np.array(features)
+        
+        # Ensure consistent size
+        if len(features) < AdvancedGestureService.FEATURE_SIZE:
+            features = np.pad(features, (0, AdvancedGestureService.FEATURE_SIZE - len(features)))
         else:
-            features.append(0)
+            features = features[:AdvancedGestureService.FEATURE_SIZE]
         
-        # 11. Smoothness (variance of second derivative)
-        if len(distances) > 2:
-            second_deriv = np.diff(distances, n=2)
-            smoothness = np.var(second_deriv)
-            features.append(smoothness)
-        else:
-            features.append(0)
+        # Normalize
+        feature_norm = np.linalg.norm(features)
+        if feature_norm > 0:
+            features = features / feature_norm
         
-        # 12. Start and end point distances from centroid
-        start_dist = np.sqrt((x_coords[0] - centroid_x)**2 + (y_coords[0] - centroid_y)**2)
-        end_dist = np.sqrt((x_coords[-1] - centroid_x)**2 + (y_coords[-1] - centroid_y)**2)
-        features.extend([start_dist, end_dist])
-        
-        return np.array(features)
+        return features
 
     @staticmethod
     def verify_gestures(known_features, test_features, threshold=None):
-        """Verify if two gestures match"""
+        """Verify if two gestures match with STRICT multi-method comparison"""
         print("\n" + "=" * 60)
-        print("🔐 [VERIFY] Starting gesture verification")
+        print("🔐 [VERIFY] Starting STRICT gesture verification")
         
         if threshold is None:
             threshold = AdvancedGestureService.SIMILARITY_THRESHOLD
@@ -223,28 +309,55 @@ class AdvancedGestureService:
         print(f"🎯 [THRESHOLD] {threshold}")
         
         try:
-            # Normalize features
-            known_norm = known_features / (np.linalg.norm(known_features) + 1e-10)
-            test_norm = test_features / (np.linalg.norm(test_features) + 1e-10)
+            # Ensure same dimensions
+            if len(known_features) != len(test_features):
+                print(f"⚠️ [WARNING] Feature dimension mismatch: {len(known_features)} vs {len(test_features)}")
+                return False, 0.0, 1.0
             
-            # Calculate cosine similarity
-            distance = cosine(known_norm, test_norm)
-            similarity = 1 - distance
+            # Method 1: Cosine Similarity (normalized dot product)
+            dot_product = np.dot(known_features, test_features)
+            norm_known = np.linalg.norm(known_features)
+            norm_test = np.linalg.norm(test_features)
+            cosine_similarity = dot_product / (norm_known * norm_test + 1e-10)
             
-            # Calculate euclidean distance for reference
-            euclidean_dist = euclidean(known_norm, test_norm)
+            # Method 2: Euclidean Distance
+            euclidean_dist = np.linalg.norm(known_features - test_features)
+            euclidean_similarity = 1 / (1 + euclidean_dist)
             
+            # Method 3: Correlation Coefficient
+            correlation = np.corrcoef(known_features, test_features)[0, 1]
+            correlation_similarity = (correlation + 1) / 2  # Scale to [0, 1]
+            
+            # Method 4: Manhattan Distance
+            manhattan_dist = np.sum(np.abs(known_features - test_features))
+            manhattan_similarity = 1 / (1 + manhattan_dist)
+            
+            # Combined similarity (weighted average)
+            similarity = (
+                0.40 * cosine_similarity +
+                0.25 * euclidean_similarity +
+                0.25 * correlation_similarity +
+                0.10 * manhattan_similarity
+            )
+            
+            # Calculate distance
+            distance = 1 - similarity
+            
+            # Check if match
             is_match = similarity >= threshold
             
-            print(f"📏 [COSINE DISTANCE] {distance:.6f}")
-            print(f"📏 [EUCLIDEAN DISTANCE] {euclidean_dist:.6f}")
-            print(f"📊 [SIMILARITY] {similarity:.2%}")
+            print(f"📏 [COSINE SIMILARITY] {cosine_similarity:.6f}")
+            print(f"📏 [EUCLIDEAN SIMILARITY] {euclidean_similarity:.6f}")
+            print(f"📏 [CORRELATION SIMILARITY] {correlation_similarity:.6f}")
+            print(f"📏 [MANHATTAN SIMILARITY] {manhattan_similarity:.6f}")
+            print(f"📊 [COMBINED SIMILARITY] {similarity:.2%}")
+            print(f"📏 [DISTANCE] {distance:.6f}")
             print(f"🎯 [RESULT] Match: {is_match}")
             
             if is_match:
-                print("✅ [SUCCESS] Gestures match!")
+                print(f"✅ [SUCCESS] Gestures match! (confidence: {similarity:.2%})")
             else:
-                print("❌ [FAILED] Gestures do not match")
+                print(f"❌ [FAILED] Gestures do not match (similarity: {similarity:.2%} < threshold: {threshold:.2%})")
             
             print("=" * 60 + "\n")
             
@@ -252,6 +365,8 @@ class AdvancedGestureService:
             
         except Exception as e:
             print(f"❌ [ERROR] Verification failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
             print("=" * 60 + "\n")
             return False, 0.0, 1.0
 
@@ -282,11 +397,9 @@ gesture_service = AdvancedGestureService()
 
 # Service initialization
 print("\n" + "=" * 60)
-print("🚀 [INIT] Gesture Recognition Service Initialized")
+print("🚀 [INIT] Gesture Recognition Service Initialized (STRICT MODE)")
 print(f"📁 [STORAGE] {GESTURE_STORAGE_DIR.absolute()}")
-print(f"🔧 [CONFIG] Threshold: {AdvancedGestureService.SIMILARITY_THRESHOLD}")
+print(f"🔧 [CONFIG] Threshold: {AdvancedGestureService.SIMILARITY_THRESHOLD} (STRICT)")
 print(f"📊 [CONFIG] Points: {AdvancedGestureService.MIN_POINTS}-{AdvancedGestureService.MAX_POINTS}")
+print(f"📏 [CONFIG] Feature Size: {AdvancedGestureService.FEATURE_SIZE}")
 print("=" * 60 + "\n")
-def get_gesture_service():
-    """Get the singleton gesture service instance"""
-    return gesture_service

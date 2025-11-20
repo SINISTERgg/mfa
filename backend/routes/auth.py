@@ -487,7 +487,7 @@ def verify_backup_code():
 
 @auth_bp.route('/mfa/verify-gesture', methods=['POST', 'OPTIONS'])
 def verify_gesture():
-    """Verify gesture recognition"""
+    """Verify gesture recognition with STRICT matching"""
     if request.method == 'OPTIONS':
         return '', 200
     
@@ -496,22 +496,92 @@ def verify_gesture():
         mfa_token = data.get('mfa_token')
         gesture_data = data.get('gesture')
         
+        print("\n" + "="*60)
+        print("✋ [GESTURE VERIFY] Starting gesture verification")
+        
         if not mfa_token:
             return jsonify({'error': 'MFA token is required'}), 400
+        
+        if not gesture_data:
+            return jsonify({'error': 'Gesture data is required'}), 400
         
         user_id = decode_mfa_token(mfa_token)
         user = User.query.get(user_id)
         
         if not user or not user.gesture_enrolled:
-            return jsonify({'error': 'Gesture not enrolled'}), 400
+            print("❌ [GESTURE VERIFY] Gesture not enrolled")
+            return jsonify({'error': 'Gesture authentication not enrolled'}), 400
         
-        # TODO: Implement actual gesture verification
+        print(f"👤 [USER] {user.username} (ID: {user.id})")
         
+        # Import gesture service
+        try:
+            from services.gesture_recognition import gesture_service
+        except ImportError:
+            import importlib.util
+            import os
+            import sys
+            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            spec = importlib.util.spec_from_file_location(
+                "gesture_recognition_service",
+                os.path.join(backend_dir, "services", "gesture_recognition.py")
+            )
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            gesture_service = module.gesture_service
+        
+        # Extract features from provided gesture
+        print("🔍 [EXTRACT] Extracting features from login gesture...")
+        test_features, error, _ = gesture_service.extract_features(
+            gesture_data,
+            user_id=user.id,
+            username=user.username,
+            save_pattern=False
+        )
+        
+        if error:
+            print(f"❌ [ERROR] {error}")
+            return jsonify({'error': error}), 400
+        
+        # Load enrolled gesture features
+        print("📦 [LOAD] Loading enrolled gesture features...")
+        stored_features = gesture_service.deserialize_features(user.gesture_features)
+        
+        # Verify gestures match
+        print("🔐 [VERIFY] Comparing gestures with STRICT threshold...")
+        is_match, similarity, distance = gesture_service.verify_gestures(
+            stored_features,
+            test_features
+        )
+        
+        if not is_match:
+            print(f"❌ [FAILED] Gesture verification failed (similarity: {similarity:.2%})")
+            
+            # Log failed attempt
+            login_record = LoginHistory(
+                user_id=user.id,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent'),
+                mfa_method='gesture',
+                success=False
+            )
+            db.session.add(login_record)
+            db.session.commit()
+            
+            return jsonify({
+                'error': 'Gesture verification failed. Please try again or use a different method.',
+                'similarity': similarity
+            }), 401
+        
+        print(f"✅ [SUCCESS] Gesture verified (similarity: {similarity:.2%})")
+        
+        # Generate tokens
         access_token = create_access_token(identity=user.id)
         refresh_token = create_refresh_token(identity=user.id)
         
         user.last_login = datetime.utcnow()
         
+        # Log successful login
         login_record = LoginHistory(
             user_id=user.id,
             ip_address=request.remote_addr,
@@ -522,15 +592,23 @@ def verify_gesture():
         db.session.add(login_record)
         db.session.commit()
         
+        print("="*60 + "\n")
+        
         return jsonify({
-            'message': 'Gesture verified successfully',
+            'message': f'Gesture verified successfully (confidence: {similarity:.2%})',
             'access_token': access_token,
             'refresh_token': refresh_token,
+            'similarity': similarity,
             'user': user.to_dict()
         }), 200
         
     except Exception as e:
+        print(f"❌ [ERROR] {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print("="*60 + "\n")
         return jsonify({'error': str(e)}), 500
+
 
 @auth_bp.route('/mfa/verify-keystroke', methods=['POST', 'OPTIONS'])
 def verify_keystroke():
