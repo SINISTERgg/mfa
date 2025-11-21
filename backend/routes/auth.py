@@ -145,7 +145,7 @@ def login():
 
 @auth_bp.route('/mfa/verify-face', methods=['POST', 'OPTIONS'])
 def verify_face():
-    """Verify face recognition"""
+    """Verify face recognition with STRICT multi-metric validation"""
     if request.method == 'OPTIONS':
         return '', 200
     
@@ -155,7 +155,7 @@ def verify_face():
         face_image = data.get('face_image')
         
         print("\n" + "="*60)
-        print("🔐 [FACE VERIFY] Starting face verification")
+        print("🔐 [FACE VERIFY] Starting STRICT face verification")
         
         if not mfa_token:
             return jsonify({'error': 'MFA token is required'}), 400
@@ -163,45 +163,59 @@ def verify_face():
         if not face_image:
             return jsonify({'error': 'Face image is required'}), 400
         
+        # Decode MFA token to get user_id
         user_id = decode_mfa_token(mfa_token)
         user = User.query.get(user_id)
         
-        if not user or not user.face_enrolled:
-            print("❌ [FACE VERIFY] Face not enrolled for this user")
+        # ✅ STRICT CHECK: Ensure user exists and face is enrolled
+        if not user:
+            print("❌ [ERROR] User not found")
+            return jsonify({'error': 'User not found'}), 404
+        
+        if not user.face_enrolled or not user.face_encoding:
+            print("❌ [ERROR] Face not enrolled for this user")
             return jsonify({'error': 'Face authentication not enrolled'}), 400
         
         print(f"👤 [USER] {user.username} (ID: {user.id})")
         
-        # ✅ FIXED IMPORT
+        # Import face service
         from services.face_recognition import face_service
         
-        # Extract embedding from provided image
+        # ✅ Extract embedding from LOGIN attempt
         print("🔍 [EXTRACT] Extracting embedding from login face...")
         test_embedding, error, _ = face_service.extract_embedding(
-            face_image, 
-            user_id=user.id, 
+            face_image,
+            user_id=user.id,
             username=user.username,
-            save_image=False
+            save_image=False  # Don't save login attempts
         )
         
         if error:
             print(f"❌ [ERROR] {error}")
             return jsonify({'error': error}), 400
         
-        # Load enrolled face embedding
+        # ✅ Load ENROLLED face embedding for THIS USER
         print("📦 [LOAD] Loading enrolled face embedding...")
-        stored_embedding = face_service.deserialize_embedding(user.face_encoding)
+        try:
+            stored_embedding = face_service.deserialize_embedding(user.face_encoding)
+        except Exception as e:
+            print(f"❌ [ERROR] Failed to load stored embedding: {str(e)}")
+            return jsonify({'error': 'Invalid stored face data. Please re-enroll.'}), 500
         
-        # Verify faces match
-        print("🔐 [VERIFY] Comparing faces...")
+        # ✅ STRICT VERIFICATION: Compare embeddings
+        print("🔐 [VERIFY] Comparing faces with STRICT threshold...")
         is_match, confidence, distance = face_service.verify_faces(
-            stored_embedding, 
+            stored_embedding,
             test_embedding
         )
         
+        # ✅ STRICT DECISION: Only allow if match is TRUE
         if not is_match:
-            print(f"❌ [FAILED] Face verification failed (confidence: {confidence:.2f}%)")
+            print(f"❌ [FAILED] Face verification failed")
+            print(f"   Distance: {distance:.6f}")
+            print(f"   Confidence: {confidence:.2f}%")
             
+            # Log failed attempt
             login_record = LoginHistory(
                 user_id=user.id,
                 ip_address=request.remote_addr,
@@ -213,10 +227,12 @@ def verify_face():
             db.session.commit()
             
             return jsonify({
-                'error': 'Face verification failed. Please try again.',
-                'confidence': confidence
+                'error': 'Face verification failed. The face does not match your enrolled face.',
+                'confidence': float(confidence),
+                'distance': float(distance)
             }), 401
         
+        # ✅ SUCCESS: Generate tokens
         print(f"✅ [SUCCESS] Face verified (confidence: {confidence:.2f}%)")
         
         access_token = create_access_token(identity=user.id)
@@ -224,6 +240,7 @@ def verify_face():
         
         user.last_login = datetime.utcnow()
         
+        # Log successful login
         login_record = LoginHistory(
             user_id=user.id,
             ip_address=request.remote_addr,
@@ -240,7 +257,8 @@ def verify_face():
             'message': f'Face verified successfully (confidence: {confidence:.2f}%)',
             'access_token': access_token,
             'refresh_token': refresh_token,
-            'confidence': confidence,
+            'confidence': float(confidence),
+            'distance': float(distance),
             'user': user.to_dict()
         }), 200
         
@@ -249,7 +267,7 @@ def verify_face():
         import traceback
         traceback.print_exc()
         print("="*60 + "\n")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Verification failed. Please try again.'}), 500
 
 
 @auth_bp.route('/mfa/verify-voice', methods=['POST', 'OPTIONS'])

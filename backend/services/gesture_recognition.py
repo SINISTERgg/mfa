@@ -17,7 +17,7 @@ GESTURE_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 class AdvancedGestureService:
     """Advanced gesture recognition with STRICT motion pattern analysis"""
     
-    SIMILARITY_THRESHOLD = 0.90  # 90% similarity required (STRICT)
+    SIMILARITY_THRESHOLD = 0.99 # 99% similarity required (STRICT)
     MIN_POINTS = 15  # Minimum data points in gesture
     MAX_POINTS = 1000  # Maximum data points
     FEATURE_SIZE = 200  # Fixed feature vector size

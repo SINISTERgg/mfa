@@ -83,7 +83,7 @@ def update_profile():
 @user_bp.route('/enroll/face', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def enroll_face():
-    """Enroll user's face for biometric authentication"""
+    """Enroll user's face for biometric authentication with validation"""
     if request.method == 'OPTIONS':
         return '', 200
     
@@ -91,10 +91,12 @@ def enroll_face():
         print("\n" + "="*60)
         print("📸 [FACE ENROLL] Starting face enrollment")
         
+        # Get current user from JWT
         current_user_id = get_jwt_identity()
         user = User.query.get(current_user_id)
         
         if not user:
+            print("❌ [ERROR] User not found")
             return jsonify({'error': 'User not found'}), 404
         
         print(f"👤 [USER] {user.username} (ID: {user.id})")
@@ -114,13 +116,13 @@ def enroll_face():
             print("❌ [ERROR] No face image provided")
             return jsonify({'error': 'Face image is required'}), 400
         
-        print(f"📏 [SIZE] Image size: {len(face_image)} characters")
+        print(f"📏 [SIZE] Image data: {len(face_image)} characters")
         
-        # ✅ FIXED IMPORT - Import at function level with proper path
+        # Import face service
         try:
             from services.face_recognition import face_service
         except ImportError:
-            # Fallback - try alternative import
+            # Fallback import
             import importlib.util
             spec = importlib.util.spec_from_file_location(
                 "face_recognition_service",
@@ -130,27 +132,47 @@ def enroll_face():
             spec.loader.exec_module(module)
             face_service = module.face_service
         
-        # Extract face embedding
-        print("🔍 [EXTRACT] Extracting face embedding...")
+        # ✅ EXTRACT: Get face embedding from enrollment image
+        print("🔍 [EXTRACT] Extracting face embedding for enrollment...")
         embedding, error, saved_path = face_service.extract_embedding(
             face_image,
             user_id=user.id,
             username=user.username,
-            save_image=True
+            save_image=True  # Save enrollment image
         )
         
         if error:
             print(f"❌ [ERROR] {error}")
             return jsonify({'error': error}), 400
         
-        # Serialize and store embedding
-        print("💾 [SAVE] Saving embedding to database...")
-        user.face_encoding = face_service.serialize_embedding(embedding)
+        if embedding is None:
+            print("❌ [ERROR] No embedding extracted")
+            return jsonify({'error': 'Could not extract face from image'}), 400
+        
+        # ✅ VALIDATE: Ensure embedding is valid
+        if embedding.shape[0] != 128:
+            print(f"❌ [ERROR] Invalid embedding shape: {embedding.shape}")
+            return jsonify({'error': 'Invalid face embedding extracted'}), 500
+        
+        # ✅ SERIALIZE: Convert numpy array to JSON string for database
+        print("💾 [SERIALIZE] Converting embedding to database format...")
+        try:
+            serialized_embedding = face_service.serialize_embedding(embedding)
+        except Exception as e:
+            print(f"❌ [ERROR] Serialization failed: {str(e)}")
+            return jsonify({'error': 'Failed to process face data'}), 500
+        
+        # ✅ SAVE: Store in database
+        print("💾 [SAVE] Saving to database...")
+        user.face_encoding = serialized_embedding
         user.face_enrolled = True
+        user.face_enrolled_at = datetime.utcnow()
         
         db.session.commit()
         
         print("✅ [SUCCESS] Face enrolled successfully")
+        print(f"📊 [STATS] Embedding shape: {embedding.shape}")
+        print(f"📁 [SAVED] Image: {saved_path}")
         print("="*60 + "\n")
         
         return jsonify({

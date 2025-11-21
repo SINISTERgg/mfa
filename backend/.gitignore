@@ -38,6 +38,8 @@ build/
 # Stored Data
 stored_face_data/
 stored_voice_data/
+stored_gesture_data/
+stored_keystroke_data/
 voice_data/
 data/
 instance/
