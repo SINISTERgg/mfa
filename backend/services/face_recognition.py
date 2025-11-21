@@ -21,7 +21,7 @@ class AdvancedFaceService:
     
     DETECTION_MODEL = "hog"  # 'hog' is faster, 'cnn' is more accurate but slower
     ENCODING_MODEL = "large"
-    MATCH_THRESHOLD = 0.97  # Default for face_recognition
+    MATCH_THRESHOLD = 0.99  # Default for face_recognition
 
     @staticmethod
     def save_face_image(base64_image, user_id, username):

@@ -1,72 +1,75 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import authService from '../services/authService';
-import BackupCodes from '../components/BackupCodes';
-import { validateEmail, validateUsername, validatePassword } from '../utils/helpers';
+import './RegisterPage.css';
 
 const RegisterPage = () => {
   const navigate = useNavigate();
+  
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     password: '',
     confirmPassword: '',
-    fullName: '',
+    fullName: ''
   });
-  const [errors, setErrors] = useState({});
+  
   const [loading, setLoading] = useState(false);
   const [backupCodes, setBackupCodes] = useState(null);
+  const [showBackupCodes, setShowBackupCodes] = useState(false);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: '' }));
-    }
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
   };
 
-  const validate = () => {
-    const newErrors = {};
+  const validateForm = () => {
+    const { username, email, password, confirmPassword } = formData;
 
-    if (!formData.username) {
-      newErrors.username = 'Username is required';
-    } else if (!validateUsername(formData.username)) {
-      newErrors.username = 'Username must be 3-80 characters (letters, numbers, _, -)';
+    // Username validation
+    if (!username || username.length < 3) {
+      toast.error('Username must be at least 3 characters');
+      return false;
     }
 
-    if (!formData.email) {
-      newErrors.email = 'Email is required';
-    } else if (!validateEmail(formData.email)) {
-      newErrors.email = 'Invalid email format';
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      toast.error('Please enter a valid email address');
+      return false;
     }
 
-    if (!formData.password) {
-      newErrors.password = 'Password is required';
-    } else {
-      const passwordValidation = validatePassword(formData.password);
-      if (!passwordValidation.valid) {
-        newErrors.password = 'Password must be at least 8 characters with uppercase, lowercase, number, and special character';
-      }
+    // Password validation
+    if (!password || password.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return false;
     }
 
-    if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
+    // Confirm password
+    if (password !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return false;
     }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return true;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!validate()) return;
+    
+    // Validate form
+    if (!validateForm()) {
+      return;
+    }
 
     setLoading(true);
 
     try {
+      console.log('📝 [REGISTER] Starting registration...');
+      
       const response = await authService.register(
         formData.username,
         formData.email,
@@ -74,123 +77,194 @@ const RegisterPage = () => {
         formData.fullName
       );
 
-      toast.success('Registration successful!');
-      setBackupCodes(response.backup_codes);
+      console.log('✅ [REGISTER] Registration successful');
+
+      // Show backup codes
+      if (response.backup_codes) {
+        setBackupCodes(response.backup_codes);
+        setShowBackupCodes(true);
+        toast.success('Registration successful! Please save your backup codes.');
+      } else {
+        toast.success('Registration successful!');
+        navigate('/login');
+      }
+
     } catch (error) {
-      toast.error(error);
+      console.error('❌ [REGISTER ERROR]', error);
+      toast.error(error.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleCopyBackupCodes = () => {
+    if (backupCodes) {
+      const codesText = backupCodes.join('\n');
+      navigator.clipboard.writeText(codesText);
+      toast.success('Backup codes copied to clipboard!');
+    }
+  };
+
+  const handleDownloadBackupCodes = () => {
+    if (backupCodes) {
+      const codesText = backupCodes.join('\n');
+      const blob = new Blob([codesText], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup-codes-${formData.username}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Backup codes downloaded!');
+    }
+  };
+
   const handleContinue = () => {
+    toast.success('Registration complete! You can now login.');
     navigate('/login');
   };
 
-  if (backupCodes) {
+  if (showBackupCodes) {
     return (
-      <div className="auth-container">
-        <div className="auth-card" style={{ maxWidth: '700px' }}>
-          <BackupCodes codes={backupCodes} />
-          <button onClick={handleContinue} className="btn btn-primary mt-20">
-            Continue to Login
-          </button>
+      <div className="register-page">
+        <div className="register-container">
+          <div className="backup-codes-modal">
+            <h2>🔑 Save Your Backup Codes</h2>
+            <p className="backup-warning">
+              ⚠️ Save these codes in a safe place. You'll need them if you lose access to your authentication methods.
+            </p>
+
+            <div className="backup-codes-grid">
+              {backupCodes.map((code, index) => (
+                <div key={index} className="backup-code-item">
+                  <span className="code-number">{index + 1}.</span>
+                  <code>{code}</code>
+                </div>
+              ))}
+            </div>
+
+            <div className="backup-actions">
+              <button
+                onClick={handleCopyBackupCodes}
+                className="btn btn-secondary"
+              >
+                📋 Copy All
+              </button>
+              <button
+                onClick={handleDownloadBackupCodes}
+                className="btn btn-secondary"
+              >
+                💾 Download
+              </button>
+              <button
+                onClick={handleContinue}
+                className="btn btn-primary"
+              >
+                Continue to Login →
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <h2>Create Account</h2>
-        <p>Sign up to get started with secure MFA</p>
+    <div className="register-page">
+      <div className="register-container">
+        <div className="register-header">
+          <h1>Create Account</h1>
+          <p>Sign up for multi-factor authentication</p>
+        </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="register-form">
           <div className="form-group">
-            <label>Full Name</label>
+            <label htmlFor="username">Username *</label>
             <input
               type="text"
-              name="fullName"
-              value={formData.fullName}
-              onChange={handleChange}
-              placeholder="Enter your full name"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Username *</label>
-            <input
-              type="text"
+              id="username"
               name="username"
               value={formData.username}
               onChange={handleChange}
-              className={errors.username ? 'error' : ''}
               placeholder="Choose a username"
               required
+              minLength={3}
+              disabled={loading}
             />
-            {errors.username && (
-              <span className="form-error">{errors.username}</span>
-            )}
           </div>
 
           <div className="form-group">
-            <label>Email *</label>
+            <label htmlFor="email">Email *</label>
             <input
               type="email"
+              id="email"
               name="email"
               value={formData.email}
               onChange={handleChange}
-              className={errors.email ? 'error' : ''}
-              placeholder="Enter your email"
+              placeholder="your.email@example.com"
               required
+              disabled={loading}
             />
-            {errors.email && <span className="form-error">{errors.email}</span>}
           </div>
 
           <div className="form-group">
-            <label>Password *</label>
+            <label htmlFor="fullName">Full Name (Optional)</label>
+            <input
+              type="text"
+              id="fullName"
+              name="fullName"
+              value={formData.fullName}
+              onChange={handleChange}
+              placeholder="John Doe"
+              disabled={loading}
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="password">Password *</label>
             <input
               type="password"
+              id="password"
               name="password"
               value={formData.password}
               onChange={handleChange}
-              className={errors.password ? 'error' : ''}
-              placeholder="Create a strong password"
+              placeholder="At least 6 characters"
               required
+              minLength={6}
+              disabled={loading}
             />
-            {errors.password && (
-              <span className="form-error">{errors.password}</span>
-            )}
           </div>
 
           <div className="form-group">
-            <label>Confirm Password *</label>
+            <label htmlFor="confirmPassword">Confirm Password *</label>
             <input
               type="password"
+              id="confirmPassword"
               name="confirmPassword"
               value={formData.confirmPassword}
               onChange={handleChange}
-              className={errors.confirmPassword ? 'error' : ''}
-              placeholder="Confirm your password"
+              placeholder="Re-enter password"
               required
+              minLength={6}
+              disabled={loading}
             />
-            {errors.confirmPassword && (
-              <span className="form-error">{errors.confirmPassword}</span>
-            )}
           </div>
 
-          <button type="submit" disabled={loading} className="btn btn-primary">
+          <button
+            type="submit"
+            className="btn btn-primary btn-block"
+            disabled={loading}
+          >
             {loading ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
 
-        <p className="text-center mt-20">
-          Already have an account?{' '}
-          <Link to="/login" className="link">
-            Sign In
-          </Link>
-        </p>
+        <div className="register-footer">
+          <p>
+            Already have an account?{' '}
+            <Link to="/login">Login here</Link>
+          </p>
+        </div>
       </div>
     </div>
   );
