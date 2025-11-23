@@ -30,7 +30,7 @@ class AdvancedFaceService:
     
     # ✅ STRICT THRESHOLDS - Tuned to reject impostors
     DISTANCE_THRESHOLD = 0.40  # Face distance must be < 0.40 (STRICT)
-    MIN_CONFIDENCE = 95.0  # Minimum 95% confidence required
+    MIN_CONFIDENCE = 90.0  # Minimum 90% confidence required
     MIN_COSINE_SIMILARITY = 0.85  # Cosine similarity must be > 0.85
 
     @staticmethod

@@ -1,4 +1,3 @@
-import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import './QRCodeDisplay.css';
 
@@ -11,7 +10,7 @@ const QRCodeDisplay = ({ value, secret }) => {
   return (
     <div className="qrcode-display">
       <div className="qrcode-container">
-        <QRCodeSVG value={value} size={200} level="H" />
+        <QRCodeSVG value={value} />
       </div>
       <div className="qrcode-instructions">
         <p>Scan this QR code with your authenticator app:</p>
