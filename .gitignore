@@ -34,6 +34,6 @@ instance/
 stored_face_data/
 stored_voice_data/
 voice_data/
-
+src_backup/
 dlib-19.24.1-cp311-win_amd64.whl
 "@ | Out-File -FilePath .gitignore -Encoding utf8
