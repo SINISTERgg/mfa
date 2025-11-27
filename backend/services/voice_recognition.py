@@ -1,7 +1,4 @@
-"""
-Advanced Voice Recognition Service with Strict Verification
-Stores voice data and performs accurate speaker verification
-"""
+
 import numpy as np
 import base64
 import io
@@ -16,9 +13,9 @@ VOICE_STORAGE_DIR = Path("C:/Hoysala/Projects/mfa-authentication-system/backend/
 VOICE_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 class AdvancedVoiceService:
-    """Advanced voice recognition with strict verification"""
+    """Advanced voice recognition with BALANCED verification (~90%)"""
     
-    SIMILARITY_THRESHOLD = 0.92  # 92% similarity required (STRICT)
+    SIMILARITY_THRESHOLD = 0.88  # 88% similarity required (BALANCED ~90%)
     MIN_AUDIO_SIZE = 10000  # Minimum 10KB
     MAX_AUDIO_SIZE = 5000000  # Maximum 5MB
     FEATURE_SIZE = 256  # Increased feature vector size
@@ -163,14 +160,14 @@ class AdvancedVoiceService:
 
     @staticmethod
     def verify_voices(known_features, test_features, threshold=None):
-        """Verify if two voice samples match with STRICT comparison"""
+        """Verify if two voice samples match with BALANCED comparison (~90%)"""
         print("\n" + "=" * 60)
-        print("🔐 [VERIFY] Starting voice verification")
+        print("🔐 [VERIFY] Starting BALANCED voice verification (~90%)")
         
         if threshold is None:
             threshold = AdvancedVoiceService.SIMILARITY_THRESHOLD
         
-        print(f"🎯 [THRESHOLD] {threshold}")
+        print(f"🎯 [THRESHOLD] {threshold:.2%}")
         
         try:
             # Ensure same dimensions
@@ -255,9 +252,10 @@ voice_service = AdvancedVoiceService()
 
 # Service initialization
 print("\n" + "=" * 60)
-print("🚀 [INIT] Voice Recognition Service Initialized (STRICT MODE)")
+print("🚀 [INIT] Voice Recognition Service Initialized")
+print(f"🔐 [MODE] BALANCED VERIFICATION (~90% Security)")
 print(f"📁 [STORAGE] {VOICE_STORAGE_DIR.absolute()}")
-print(f"🔧 [CONFIG] Threshold: {AdvancedVoiceService.SIMILARITY_THRESHOLD} (STRICT)")
+print(f"🔧 [CONFIG] Threshold: {AdvancedVoiceService.SIMILARITY_THRESHOLD:.2%} (BALANCED)")
 print(f"📏 [CONFIG] Feature Size: {AdvancedVoiceService.FEATURE_SIZE}")
 print(f"📦 [CONFIG] Audio Size: {AdvancedVoiceService.MIN_AUDIO_SIZE}-{AdvancedVoiceService.MAX_AUDIO_SIZE} bytes")
 print("=" * 60 + "\n")

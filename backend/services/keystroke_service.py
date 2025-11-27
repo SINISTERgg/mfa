@@ -1,8 +1,4 @@
-"""
-Advanced Keystroke Dynamics Authentication Service - STRICT VERIFICATION MODE
-Using statistical analysis and machine learning for typing pattern recognition
-Only enrolled keystroke patterns pass authentication
-"""
+
 import numpy as np
 import json
 from datetime import datetime
@@ -12,16 +8,18 @@ from sklearn.preprocessing import StandardScaler
 from pathlib import Path
 import os
 
+
 # Storage directory for keystroke patterns
 KEYSTROKE_STORAGE_DIR = Path("C:/Hoysala/Projects/mfa-authentication-system/backend/stored_keystroke_data")
 KEYSTROKE_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
+
 class KeystrokeDynamicsAnalyzer:
-    """Advanced keystroke dynamics authentication using statistical analysis with STRICT verification"""
+    """Advanced keystroke dynamics authentication using statistical analysis with BALANCED verification"""
     
-    # ✅ STRICT THRESHOLDS
-    SIMILARITY_THRESHOLD = 0.60  # Distance must be < 0.60 (STRICT)
-    MIN_CONFIDENCE = 65.0  # Minimum 65% confidence
+    # ✅ BALANCED THRESHOLDS (~70% for keystroke - appropriate for typing)
+    SIMILARITY_THRESHOLD = 0.65  # Distance must be < 0.65 (BALANCED)
+    MIN_CONFIDENCE = 70.0  # Minimum 70% confidence
     MIN_SAMPLES = 3  # Minimum samples for enrollment
     RECOMMENDED_SAMPLES = 5  # Recommended samples for best accuracy
     
@@ -30,7 +28,7 @@ class KeystrokeDynamicsAnalyzer:
         self.threshold = self.SIMILARITY_THRESHOLD
         print("\n" + "=" * 60)
         print("⌨️  [INIT] Keystroke Dynamics Analyzer Initialized")
-        print(f"🔧 [CONFIG] Similarity Threshold: {self.SIMILARITY_THRESHOLD} (STRICT)")
+        print(f"🔧 [CONFIG] Similarity Threshold: {self.SIMILARITY_THRESHOLD} (BALANCED)")
         print(f"🔧 [CONFIG] Min Confidence: {self.MIN_CONFIDENCE}%")
         print(f"🔧 [CONFIG] Min Samples: {self.MIN_SAMPLES}")
         print(f"🔧 [CONFIG] Recommended Samples: {self.RECOMMENDED_SAMPLES}")
@@ -240,7 +238,7 @@ class KeystrokeDynamicsAnalyzer:
     
     def verify_pattern(self, enrolled_profile: Dict, sample: Dict) -> Tuple[bool, float]:
         """
-        Verify a keystroke sample against enrolled profile with STRICT validation
+        Verify a keystroke sample against enrolled profile with BALANCED validation
         
         Args:
             enrolled_profile: User's enrolled keystroke profile
@@ -250,7 +248,7 @@ class KeystrokeDynamicsAnalyzer:
             (verified: bool, confidence: float)
         """
         print("\n" + "=" * 60)
-        print("🔐 [VERIFY] Starting STRICT keystroke verification")
+        print("🔐 [VERIFY] Starting BALANCED keystroke verification (~70%)")
         
         start_time = datetime.now()
         
@@ -280,7 +278,7 @@ class KeystrokeDynamicsAnalyzer:
             
             print(f"📊 [CONFIDENCE] {confidence:.2f}%")
             
-            # ✅ STRICT DECISION: Both criteria must be met
+            # ✅ BALANCED DECISION: Both criteria must be met
             criterion_1 = distance < self.threshold
             criterion_2 = confidence >= self.MIN_CONFIDENCE
             
@@ -421,15 +419,19 @@ class KeystrokeDynamicsAnalyzer:
         
         return result
 
+
 # ===========================
 # GLOBAL ANALYZER INSTANCE
 # ===========================
 
+
 keystroke_analyzer = KeystrokeDynamicsAnalyzer()
+
 
 # ===========================
 # CONVENIENCE FUNCTIONS
 # ===========================
+
 
 def enroll_keystroke_pattern(samples_data: List[Dict], user_id: int = None, username: str = None) -> Dict:
     """
@@ -445,6 +447,7 @@ def enroll_keystroke_pattern(samples_data: List[Dict], user_id: int = None, user
     """
     return keystroke_analyzer.enroll_pattern(samples_data, user_id, username)
 
+
 def verify_keystroke_pattern(enrolled_profile: Dict, sample_data: Dict) -> Tuple[bool, float]:
     """
     Verify keystroke sample against enrolled profile
@@ -458,6 +461,7 @@ def verify_keystroke_pattern(enrolled_profile: Dict, sample_data: Dict) -> Tuple
     """
     return keystroke_analyzer.verify_pattern(enrolled_profile, sample_data)
 
+
 def analyze_pattern_strength(samples_data: List[Dict]) -> Dict:
     """
     Analyze the strength of keystroke patterns
@@ -470,12 +474,15 @@ def analyze_pattern_strength(samples_data: List[Dict]) -> Dict:
     """
     return keystroke_analyzer.calculate_pattern_strength(samples_data)
 
+
 # ===========================
 # SERVICE INITIALIZATION
 # ===========================
 
+
 print("\n" + "=" * 60)
-print("🚀 [INIT] Keystroke Dynamics Service Initialized (BALANCED MODE)")
+print("🚀 [INIT] Keystroke Dynamics Service Initialized")
+print(f"🔐 [MODE] BALANCED VERIFICATION (~70% Security)")
 print(f"📁 [STORAGE] {KEYSTROKE_STORAGE_DIR.absolute()}")
 print(f"🔧 [CONFIG] Similarity Threshold: {KeystrokeDynamicsAnalyzer.SIMILARITY_THRESHOLD} (BALANCED)")
 print(f"🔧 [CONFIG] Min Confidence: {KeystrokeDynamicsAnalyzer.MIN_CONFIDENCE}%")

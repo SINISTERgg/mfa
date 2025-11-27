@@ -1,8 +1,4 @@
-"""
-Advanced Gesture Recognition Service with STRICT Verification
-Using accelerometer data and motion patterns for authentication
-Stores gesture patterns with ML-based verification
-"""
+
 import numpy as np
 import json
 from datetime import datetime
@@ -10,17 +6,20 @@ from pathlib import Path
 import os
 import hashlib
 
+
 # Storage directory
 GESTURE_STORAGE_DIR = Path("C:/Hoysala/Projects/mfa-authentication-system/backend/stored_gesture_data")
 GESTURE_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
+
 class AdvancedGestureService:
-    """Advanced gesture recognition with STRICT motion pattern analysis"""
+    """Advanced gesture recognition with BALANCED motion pattern analysis (~90%)"""
     
-    SIMILARITY_THRESHOLD = 0.99 # 99% similarity required (STRICT)
+    SIMILARITY_THRESHOLD = 0.88  # 88% similarity required (BALANCED ~90%)
     MIN_POINTS = 15  # Minimum data points in gesture
     MAX_POINTS = 1000  # Maximum data points
     FEATURE_SIZE = 200  # Fixed feature vector size
+
 
     @staticmethod
     def save_gesture_pattern(gesture_data, user_id, username):
@@ -43,11 +42,12 @@ class AdvancedGestureService:
             print(f"❌ [ERROR] Save failed: {str(e)}\n")
             return None, str(e)
 
+
     @staticmethod
     def extract_features(gesture_data, user_id=None, username=None, save_pattern=True):
-        """Extract comprehensive features from gesture data with STRICT analysis"""
+        """Extract comprehensive features from gesture data with BALANCED analysis"""
         print("\n" + "=" * 60)
-        print("✋ [EXTRACT] Starting STRICT gesture feature extraction")
+        print("✋ [EXTRACT] Starting BALANCED gesture feature extraction")
         print(f"👤 [USER] user_id={user_id}, username={username}")
         
         saved_pattern_path = None
@@ -89,8 +89,8 @@ class AdvancedGestureService:
             x_coords = np.array(x_coords)
             y_coords = np.array(y_coords)
             
-            # Extract comprehensive features with STRICT criteria
-            print("🔍 [FEATURES] Extracting STRICT gesture features...")
+            # Extract comprehensive features
+            print("🔍 [FEATURES] Extracting BALANCED gesture features...")
             features = AdvancedGestureService._extract_comprehensive_features(
                 x_coords, y_coords, timestamps, gesture_data
             )
@@ -114,6 +114,7 @@ class AdvancedGestureService:
             traceback.print_exc()
             print("=" * 60 + "\n")
             return None, f"Gesture processing error: {e}", None
+
 
     @staticmethod
     def _extract_comprehensive_features(x_coords, y_coords, timestamps, gesture_data):
@@ -297,16 +298,17 @@ class AdvancedGestureService:
         
         return features
 
+
     @staticmethod
     def verify_gestures(known_features, test_features, threshold=None):
-        """Verify if two gestures match with STRICT multi-method comparison"""
+        """Verify if two gestures match with BALANCED multi-method comparison (~90%)"""
         print("\n" + "=" * 60)
-        print("🔐 [VERIFY] Starting STRICT gesture verification")
+        print("🔐 [VERIFY] Starting BALANCED gesture verification (~90%)")
         
         if threshold is None:
             threshold = AdvancedGestureService.SIMILARITY_THRESHOLD
         
-        print(f"🎯 [THRESHOLD] {threshold}")
+        print(f"🎯 [THRESHOLD] {threshold:.2%}")
         
         try:
             # Ensure same dimensions
@@ -370,15 +372,18 @@ class AdvancedGestureService:
             print("=" * 60 + "\n")
             return False, 0.0, 1.0
 
+
     @staticmethod
     def serialize_features(features):
         """Convert features to string for database"""
         return json.dumps(features.tolist())
 
+
     @staticmethod
     def deserialize_features(features_str):
         """Convert string back to numpy array"""
         return np.array(json.loads(features_str))
+
 
     @staticmethod
     def delete_user_gestures(user_id):
@@ -392,14 +397,17 @@ class AdvancedGestureService:
                 continue
         return deleted
 
+
 # Create singleton instance
 gesture_service = AdvancedGestureService()
 
+
 # Service initialization
 print("\n" + "=" * 60)
-print("🚀 [INIT] Gesture Recognition Service Initialized (STRICT MODE)")
+print("🚀 [INIT] Gesture Recognition Service Initialized")
+print(f"🔐 [MODE] BALANCED VERIFICATION (~90% Security)")
 print(f"📁 [STORAGE] {GESTURE_STORAGE_DIR.absolute()}")
-print(f"🔧 [CONFIG] Threshold: {AdvancedGestureService.SIMILARITY_THRESHOLD} (STRICT)")
+print(f"🔧 [CONFIG] Threshold: {AdvancedGestureService.SIMILARITY_THRESHOLD:.2%} (BALANCED)")
 print(f"📊 [CONFIG] Points: {AdvancedGestureService.MIN_POINTS}-{AdvancedGestureService.MAX_POINTS}")
 print(f"📏 [CONFIG] Feature Size: {AdvancedGestureService.FEATURE_SIZE}")
 print("=" * 60 + "\n")

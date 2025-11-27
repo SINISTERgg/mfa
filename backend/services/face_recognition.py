@@ -1,8 +1,4 @@
-"""
-Advanced Face Recognition Service - STRICT VERIFICATION MODE
-Uses face_recognition library with multi-metric validation
-Only enrolled faces pass authentication - Zero false positives
-"""
+
 import face_recognition
 import cv2
 import numpy as np
@@ -15,23 +11,25 @@ from pathlib import Path
 from datetime import datetime
 import hashlib
 
+
 # Storage directory for face images
 FACE_STORAGE_DIR = Path("stored_face_data")
 FACE_STORAGE_DIR.mkdir(exist_ok=True)
 
+
 class AdvancedFaceService:
     """
-    Face recognition with STRICT multi-metric verification.
-    Only enrolled faces will pass authentication.
+    Face recognition with BALANCED multi-metric verification (~90% security).
     """
     
     DETECTION_MODEL = "hog"  # 'hog' is faster, 'cnn' is more accurate
     ENCODING_MODEL = "large"  # Use large model for 128-dim embeddings
     
-    # ✅ STRICT THRESHOLDS - Tuned to reject impostors
-    DISTANCE_THRESHOLD = 0.35    # Face distance must be < 0.40 (STRICT)
+    # ✅ BALANCED THRESHOLDS (~90% security)
+    DISTANCE_THRESHOLD = 0.50  # Face distance must be < 0.50 (BALANCED)
     MIN_CONFIDENCE = 90.0  # Minimum 90% confidence required
-    MIN_COSINE_SIMILARITY = 0.65  # Cosine similarity must be > 0.65
+    MIN_COSINE_SIMILARITY = 0.80  # Cosine similarity must be > 0.80
+
 
     @staticmethod
     def save_face_image(base64_image, user_id, username):
@@ -69,6 +67,7 @@ class AdvancedFaceService:
         except Exception as e:
             print(f"❌ [ERROR] Save failed: {str(e)}\n")
             return None, str(e)
+
 
     @staticmethod
     def extract_embedding(base64_image, user_id=None, username=None, save_image=True):
@@ -173,17 +172,18 @@ class AdvancedFaceService:
             print("=" * 60 + "\n")
             return None, f"Face processing error: {str(e)}", None
 
+
     @staticmethod
     def verify_faces(known_embedding, test_embedding, threshold=None):
         """
-        STRICT face verification using multiple metrics.
-        Only returns True if ALL criteria are met:
-        1. Face distance < threshold
-        2. Confidence >= 95%
-        3. Cosine similarity > 0.85
+        BALANCED face verification using multiple metrics (~90% security).
+        Returns True if ALL criteria are met:
+        1. Face distance < 0.50
+        2. Confidence >= 90%
+        3. Cosine similarity > 0.80
         """
         print("\n" + "=" * 60)
-        print("🔐 [VERIFY] Starting STRICT face verification")
+        print("🔐 [VERIFY] Starting BALANCED face verification (~90%)")
         
         if threshold is None:
             threshold = AdvancedFaceService.DISTANCE_THRESHOLD
@@ -214,7 +214,7 @@ class AdvancedFaceService:
             # ✅ METRIC 4: Euclidean Distance (tertiary validation)
             euclidean_dist = np.linalg.norm(known_embedding - test_embedding)
             
-            # ✅ STRICT DECISION: ALL criteria must be met
+            # ✅ BALANCED DECISION: ALL criteria must be met
             criterion_1 = distance < threshold
             criterion_2 = confidence >= AdvancedFaceService.MIN_CONFIDENCE
             criterion_3 = cosine_similarity > AdvancedFaceService.MIN_COSINE_SIMILARITY
@@ -255,10 +255,12 @@ class AdvancedFaceService:
             print("=" * 60 + "\n")
             return False, 0.0, 1.0
 
+
     @staticmethod
     def serialize_embedding(embedding):
         """Converts numpy array to JSON string for database storage"""
         return json.dumps(embedding.tolist())
+
 
     @staticmethod
     def deserialize_embedding(json_string):
@@ -268,6 +270,7 @@ class AdvancedFaceService:
         except Exception as e:
             print(f"❌ [DESERIALIZE ERROR] {str(e)}")
             raise Exception("Invalid face encoding data. Please re-enroll face.")
+
 
     @staticmethod
     def delete_user_faces(user_id):
@@ -282,13 +285,15 @@ class AdvancedFaceService:
                 print(f"⚠️  Could not delete {file_path}: {str(e)}")
         return deleted
 
+
 # Create singleton instance
 face_service = AdvancedFaceService()
+
 
 # Service initialization message
 print("\n" + "=" * 60)
 print("🚀 [INIT] Face Recognition Service Initialized")
-print(f"🔐 [MODE] STRICT VERIFICATION")
+print(f"🔐 [MODE] BALANCED VERIFICATION (~90% Security)")
 print(f"📁 [STORAGE] {FACE_STORAGE_DIR.absolute()}")
 print(f"🔧 [CONFIG] Detection Model: {AdvancedFaceService.DETECTION_MODEL}")
 print(f"🔧 [CONFIG] Encoding Model: {AdvancedFaceService.ENCODING_MODEL}")
