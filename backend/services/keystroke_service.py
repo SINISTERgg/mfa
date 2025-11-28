@@ -19,7 +19,7 @@ class KeystrokeDynamicsAnalyzer:
     
     # ✅ BALANCED THRESHOLDS (~70% for keystroke - appropriate for typing)
     SIMILARITY_THRESHOLD = 0.65  # Distance must be < 0.65 (BALANCED)
-    MIN_CONFIDENCE = 70.0  # Minimum 70% confidence
+    MIN_CONFIDENCE = 40.0  # Minimum 40% confidence
     MIN_SAMPLES = 3  # Minimum samples for enrollment
     RECOMMENDED_SAMPLES = 5  # Recommended samples for best accuracy
     

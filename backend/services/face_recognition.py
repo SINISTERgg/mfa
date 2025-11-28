@@ -27,7 +27,7 @@ class AdvancedFaceService:
     
     # ✅ BALANCED THRESHOLDS (~90% security)
     DISTANCE_THRESHOLD = 0.50  # Face distance must be < 0.50 (BALANCED)
-    MIN_CONFIDENCE = 55.0  # Minimum 55% confidence required
+    MIN_CONFIDENCE = 50.0  # Minimum 50% confidence required
     MIN_COSINE_SIMILARITY = 0.80  # Cosine similarity must be > 0.80
 
 
