@@ -1,76 +1,48 @@
-import React, { useState, useRef } from 'react';
-import './OTPInput.css';
+import { useRef } from "react";
+import "./OTPInput.css";
 
-const OTPInput = ({ length = 6, onComplete }) => {
-  const [otp, setOtp] = useState(new Array(length).fill(''));
-  const inputRefs = useRef([]);
+function OTPInput({ value, onChange, length = 6 }) {
+  const inputsRef = useRef([]);
 
-  const handleChange = (index, value) => {
-    if (isNaN(value)) return;
+  const safe = (value || "").padEnd(length, " ");
+  const digits = safe.split("").slice(0, length);
 
-    const newOtp = [...otp];
-    newOtp[index] = value.substring(value.length - 1);
-    setOtp(newOtp);
+  const handleChange = (index, val) => {
+    const d = val.replace(/[^0-9]/g, "").slice(0, 1);
+    const arr = digits.slice();
+    arr[index] = d;
+    const next = arr.join("").trimEnd();
+    onChange(next);
 
-    // Auto-focus next input
-    if (value && index < length - 1) {
-      inputRefs.current[index + 1].focus();
-    }
-
-    // Check if OTP is complete
-    const otpString = newOtp.join('');
-    if (otpString.length === length) {
-      onComplete(otpString);
+    if (d && index < length - 1) {
+      inputsRef.current[index + 1]?.focus();
     }
   };
 
   const handleKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      inputRefs.current[index - 1].focus();
-    }
-  };
-
-  const handlePaste = (e) => {
-    e.preventDefault();
-    const pasteData = e.clipboardData.getData('text').slice(0, length);
-    const newOtp = [...otp];
-
-    for (let i = 0; i < pasteData.length; i++) {
-      if (isNaN(pasteData[i])) continue;
-      newOtp[i] = pasteData[i];
-    }
-
-    setOtp(newOtp);
-
-    // Focus last filled input or next empty
-    const lastFilledIndex = Math.min(pasteData.length, length - 1);
-    inputRefs.current[lastFilledIndex].focus();
-
-    // Check if OTP is complete
-    const otpString = newOtp.join('');
-    if (otpString.length === length) {
-      onComplete(otpString);
+    if (e.key === "Backspace" && !digits[index].trim() && index > 0) {
+      inputsRef.current[index - 1]?.focus();
     }
   };
 
   return (
-    <div className="otp-input-container">
-      {otp.map((digit, index) => (
+    <div className="otp-input-root">
+      {digits.map((d, i) => (
         <input
-          key={index}
-          ref={(ref) => (inputRefs.current[index] = ref)}
+          key={i}
+          ref={(el) => (inputsRef.current[i] = el)}
+          className="otp-box"
           type="text"
           inputMode="numeric"
           maxLength={1}
-          value={digit}
-          onChange={(e) => handleChange(index, e.target.value)}
-          onKeyDown={(e) => handleKeyDown(index, e)}
-          onPaste={handlePaste}
-          className="otp-input"
+          value={d.trim()}
+          onChange={(e) => handleChange(i, e.target.value)}
+          onKeyDown={(e) => handleKeyDown(i, e)}
+          autoComplete={i === 0 ? "one-time-code" : "off"}
         />
       ))}
     </div>
   );
-};
+}
 
 export default OTPInput;

@@ -1,43 +1,25 @@
-.otp-input-container {
+.otp-input-root {
   display: flex;
-  gap: 0.75rem;
   justify-content: center;
-  margin: 1.5rem 0;
+  gap: 12px;
 }
 
-.otp-input {
-  width: 50px;
-  height: 60px;
+.otp-box {
+  width: 56px;
+  height: 64px;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
   text-align: center;
-  font-size: 1.5rem;
+  font-size: 24px;
   font-weight: 600;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  color: #1f2937;
-}
-
-.otp-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-  transform: scale(1.05);
+  background: #ffffff;
 }
 
-.otp-input::-webkit-outer-spin-button,
-.otp-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+.otp-box:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25);
 }
-
-@media (max-width: 600px) {
-  .otp-input-container {
-    gap: 0.5rem;
-  }
-
-  .otp-input {
-    width: 40px;
-    height: 50px;
-    font-size: 1.25rem;
-  }
+.otp-box.filled {
+  border-color: #10b981;
 }

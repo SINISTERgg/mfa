@@ -16,10 +16,11 @@ class Config:
     SQLALCHEMY_ECHO = False
     
     # JWT
+    # JWT
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'jwt-secret-key-change-in-production')
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(seconds=int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES', 3600)))
-    JWT_REFRESH_TOKEN_EXPIRES = timedelta(seconds=int(os.getenv('JWT_REFRESH_TOKEN_EXPIRES', 2592000)))
-    
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)  # ✅ Changed from 1 hour to 24 hours
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)  # 30 days
+
     # CORS
     CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
     

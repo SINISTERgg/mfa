@@ -1,112 +1,112 @@
+
+import base64
+import io
+
 import pyotp
 import qrcode
-import io
-import base64
 from flask import current_app
 
 
 class OTPService:
-    """Service for OTP (TOTP) operations"""
-    
+    """
+    Stateless TOTP helper.
+    - generate_secret()        -> new Base32 secret
+    - build_provisioning_uri  -> otpauth:// URI for Google Authenticator etc.
+    - build_qr_data_url       -> data:image/png;base64,... for frontend
+    - verify_otp              -> validate a user-entered code
+    - current_code            -> for diagnostics only (do not expose to clients)
+    """
+
     def __init__(self):
-        self.issuer_name = None
-        self.validity_window = None
-    
-    def _load_config(self):
-        """Load configuration from app context"""
-        if current_app:
-            self.issuer_name = current_app.config.get('OTP_ISSUER_NAME', 'MFA Auth System')
-            self.validity_window = current_app.config.get('OTP_VALIDITY_WINDOW', 2)
-    
-    def generate_secret(self):
-        """Generate a new OTP secret"""
+        # Defaults; can be overridden by Flask config
+        self.default_issuer = "MFA Auth System"
+        # window = 1 means current time slice ±1 slice (about ±30s if period=30)
+        self.default_valid_window = 1
+
+    # ---------- internal helpers ----------
+
+    def _issuer(self) -> str:
+        if not current_app:
+            return self.default_issuer
+        return current_app.config.get("OTP_ISSUER_NAME", self.default_issuer)
+
+    def _valid_window(self) -> int:
+        if not current_app:
+            return self.default_valid_window
+        return int(current_app.config.get("OTP_VALIDITY_WINDOW", self.default_valid_window))
+
+    # ---------- public API ----------
+
+    @staticmethod
+    def generate_secret() -> str:
+        """
+        Generate a new Base32 TOTP secret.
+        Store this EXACT string in the database (e.g. user.otp_secret).
+        """
         return pyotp.random_base32()
-    
-    def generate_provisioning_uri(self, secret, username):
+
+    def build_provisioning_uri(self, secret: str, account_name: str) -> str:
         """
-        Generate provisioning URI for QR code
-        
-        Args:
-            secret: OTP secret
-            username: User's username
-        
-        Returns:
-            str: Provisioning URI
+        Create an otpauth:// URI for QR enrollment.
+
+        :param secret: Base32 TOTP secret stored for the user
+        :param account_name: usually user email or username
         """
-        self._load_config()
-        
+        if not secret:
+            raise ValueError("Missing TOTP secret")
+
         totp = pyotp.TOTP(secret)
-        uri = totp.provisioning_uri(
-            name=username,
-            issuer_name=self.issuer_name
-        )
-        
-        return uri
-    
-    def generate_qr_code(self, provisioning_uri):
+        return totp.provisioning_uri(name=account_name, issuer_name=self._issuer())
+
+    @staticmethod
+    def build_qr_data_url(provisioning_uri: str) -> str:
         """
-        Generate QR code image from provisioning URI
-        
-        Args:
-            provisioning_uri: TOTP provisioning URI
-        
-        Returns:
-            str: Base64 encoded QR code image
+        Generate a data URL PNG QR code from a provisioning URI.
+        Safe to send directly to the frontend.
         """
-        try:
-            # Create QR code
-            qr = qrcode.QRCode(version=1, box_size=10, border=5)
-            qr.add_data(provisioning_uri)
-            qr.make(fit=True)
-            
-            # Generate image
-            img = qr.make_image(fill_color="black", back_color="white")
-            
-            # Convert to base64
-            buffer = io.BytesIO()
-            img.save(buffer, format='PNG')
-            buffer.seek(0)
-            
-            img_base64 = base64.b64encode(buffer.getvalue()).decode()
-            
-            return f"data:image/png;base64,{img_base64}"
-            
-        except Exception as e:
-            return None
-    
-    def verify_otp(self, secret, otp_code):
+        if not provisioning_uri:
+            raise ValueError("Missing provisioning URI")
+
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(provisioning_uri)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        img_bytes = buffer.getvalue()
+
+        b64 = base64.b64encode(img_bytes).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
+
+    def verify_otp(self, secret: str, otp_code: str) -> bool:
         """
-        Verify OTP code
-        
-        Args:
-            secret: User's OTP secret
-            otp_code: OTP code to verify
-        
-        Returns:
-            bool: True if valid, False otherwise
+        Verify a user-supplied OTP code.
+
+        :param secret: Base32 TOTP secret from the user's record
+        :param otp_code: 6‑digit code entered by the user
         """
-        self._load_config()
-        
+        if not secret or not otp_code:
+            return False
+
         try:
             totp = pyotp.TOTP(secret)
-            
-            # Verify with validity window (allows codes from adjacent time windows)
-            is_valid = totp.verify(otp_code, valid_window=self.validity_window)
-            
-            return is_valid
-            
+            # valid_window extends acceptance to ±window time-steps
+            return bool(totp.verify(otp_code.strip(), valid_window=self._valid_window()))
         except Exception:
+            # Any decoding / format error -> treat as invalid
             return False
-    
-    def get_current_otp(self, secret):
+
+    @staticmethod
+    def current_code(secret: str) -> str:
         """
-        Get current OTP code (for testing purposes)
-        
-        Args:
-            secret: OTP secret
-        
-        Returns:
-            str: Current OTP code
+        Return the current OTP (for debugging in server logs only).
+        Never expose this to the client.
         """
-        totp = pyotp.TOTP(secret)
-        return totp.now()
+        if not secret:
+            raise ValueError("Missing TOTP secret")
+        return pyotp.TOTP(secret).now()
+
+
+otp_service = OTPService()

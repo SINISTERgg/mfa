@@ -1,4 +1,3 @@
-
 import numpy as np
 import json
 from datetime import datetime
@@ -8,18 +7,16 @@ from sklearn.preprocessing import StandardScaler
 from pathlib import Path
 import os
 
-
 # Storage directory for keystroke patterns
 KEYSTROKE_STORAGE_DIR = Path("C:/Hoysala/Projects/mfa-authentication-system/backend/stored_keystroke_data")
 KEYSTROKE_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-
 
 class KeystrokeDynamicsAnalyzer:
     """Advanced keystroke dynamics authentication using statistical analysis with BALANCED verification"""
     
     # ✅ BALANCED THRESHOLDS (~70% for keystroke - appropriate for typing)
-    SIMILARITY_THRESHOLD = 0.65  # Distance must be < 0.65 (BALANCED)
-    MIN_CONFIDENCE = 40.0  # Minimum 40% confidence
+    SIMILARITY_THRESHOLD = 1.2  # Distance must be < 1.2 (BALANCED)
+    MIN_CONFIDENCE = 38.0  # Minimum 38% confidence
     MIN_SAMPLES = 3  # Minimum samples for enrollment
     RECOMMENDED_SAMPLES = 5  # Recommended samples for best accuracy
     
@@ -56,9 +53,57 @@ class KeystrokeDynamicsAnalyzer:
             print(f"❌ [ERROR] Save failed: {str(e)}\n")
             return None, str(e)
     
-    def extract_features(self, keystroke_data: Dict, log_details: bool = True) -> np.ndarray:
+    def convert_events_to_timings(self, events: List[Dict]) -> Dict:
+        """
+        Convert raw keystroke events to timing format
+        
+        Args:
+            events: List of keystroke events with type, key, timestamp
+        
+        Returns:
+            Dict with timings array
+        """
+        print(f"\n🔄 [CONVERT] Converting {len(events)} events to timing format...")
+        
+        timings = []
+        keydown_map = {}
+        last_keyup_time = None
+        
+        for event in events:
+            event_type = event.get('type', '')
+            key = event.get('key', '')
+            timestamp = event.get('timestamp', 0)
+            
+            if event_type == 'keydown':
+                keydown_map[key] = timestamp
+                
+            elif event_type == 'keyup' and key in keydown_map:
+                keydown_time = keydown_map[key]
+                hold_time = timestamp - keydown_time
+                
+                # Flight time (time from previous key release to this key press)
+                flight_time = keydown_time - last_keyup_time if last_keyup_time else 0
+                
+                timings.append({
+                    'key': key,
+                    'timestamp': timestamp,
+                    'holdTime': hold_time,
+                    'flightTime': flight_time
+                })
+                
+                last_keyup_time = timestamp
+                del keydown_map[key]
+        
+        print(f"✅ [CONVERTED] {len(timings)} timing entries created")
+        
+        return {'timings': timings}
+    
+    def extract_features(self, keystroke_data, log_details: bool = True) -> np.ndarray:
         """
         Extract statistical features from keystroke data with detailed logging
+        
+        Args:
+            keystroke_data: Can be Dict with 'timings' OR List of events
         
         Features extracted:
         - Dwell times (key hold duration)
@@ -68,6 +113,11 @@ class KeystrokeDynamicsAnalyzer:
         """
         if log_details:
             print("\n🔍 [EXTRACT] Extracting keystroke features...")
+        
+        # ✅ HANDLE BOTH FORMATS
+        if isinstance(keystroke_data, list):
+            # Convert event list to timings format
+            keystroke_data = self.convert_events_to_timings(keystroke_data)
         
         timings = keystroke_data.get('timings', [])
         
@@ -79,10 +129,10 @@ class KeystrokeDynamicsAnalyzer:
             print(f"📊 [TIMINGS] {len(timings)} keystroke events")
         
         # Extract dwell times (how long each key is held)
-        dwell_times = [t['holdTime'] for t in timings if 'holdTime' in t]
+        dwell_times = [t['holdTime'] for t in timings if 'holdTime' in t and t['holdTime'] > 0]
         
         # Extract flight times (time between key releases)
-        flight_times = [t['flightTime'] for t in timings if 'flightTime' in t]
+        flight_times = [t['flightTime'] for t in timings if 'flightTime' in t and t['flightTime'] > 0]
         
         if log_details:
             print(f"⏱️  [DWELL] {len(dwell_times)} dwell times")
@@ -129,22 +179,26 @@ class KeystrokeDynamicsAnalyzer:
             intervals = []
             for i in range(len(timings) - 1):
                 interval = timings[i + 1]['timestamp'] - timings[i]['timestamp']
-                intervals.append(interval)
+                if interval > 0:
+                    intervals.append(interval)
             
-            # Calculate typing speed (keys per second)
-            total_duration = timings[-1]['timestamp'] - timings[0]['timestamp']
-            typing_speed = len(intervals) / (total_duration / 1000) if total_duration > 0 else 0
-            
-            rhythm_features = [
-                np.mean(intervals),
-                np.std(intervals),
-                typing_speed
-            ]
-            features.extend(rhythm_features)
-            
-            if log_details:
-                print(f"⚡ [RHYTHM] Typing speed: {typing_speed:.2f} keys/sec")
-                print(f"📈 [INTERVALS] Mean: {rhythm_features[0]:.2f}ms, Std: {rhythm_features[1]:.2f}ms")
+            if intervals:
+                # Calculate typing speed (keys per second)
+                total_duration = timings[-1]['timestamp'] - timings[0]['timestamp']
+                typing_speed = len(intervals) / (total_duration / 1000) if total_duration > 0 else 0
+                
+                rhythm_features = [
+                    np.mean(intervals),
+                    np.std(intervals),
+                    typing_speed
+                ]
+                features.extend(rhythm_features)
+                
+                if log_details:
+                    print(f"⚡ [RHYTHM] Typing speed: {typing_speed:.2f} keys/sec")
+                    print(f"📈 [INTERVALS] Mean: {rhythm_features[0]:.2f}ms, Std: {rhythm_features[1]:.2f}ms")
+            else:
+                features.extend([0, 0, 0])
         else:
             features.extend([0, 0, 0])
         
@@ -156,12 +210,12 @@ class KeystrokeDynamicsAnalyzer:
         
         return feature_array
     
-    def enroll_pattern(self, samples: List[Dict], user_id: int = None, username: str = None) -> Dict:
+    def enroll_pattern(self, samples, user_id: int = None, username: str = None) -> Dict:
         """
         Create enrollment profile from multiple keystroke samples with detailed logging
         
         Args:
-            samples: List of keystroke data dictionaries (3-5 samples)
+            samples: List of keystroke data (can be dicts OR lists of events)
             user_id: User ID for storage
             username: Username for storage
         
@@ -236,13 +290,13 @@ class KeystrokeDynamicsAnalyzer:
         
         return profile
     
-    def verify_pattern(self, enrolled_profile: Dict, sample: Dict) -> Tuple[bool, float]:
+    def verify_pattern(self, enrolled_profile: Dict, sample) -> Tuple[bool, float]:
         """
         Verify a keystroke sample against enrolled profile with BALANCED validation
         
         Args:
             enrolled_profile: User's enrolled keystroke profile
-            sample: New keystroke sample to verify
+            sample: New keystroke sample to verify (dict OR list of events)
         
         Returns:
             (verified: bool, confidence: float)
@@ -313,9 +367,12 @@ class KeystrokeDynamicsAnalyzer:
             print("=" * 60 + "\n")
             return False, 0.0
     
-    def calculate_pattern_strength(self, samples: List[Dict]) -> Dict:
+    def calculate_pattern_strength(self, samples) -> Dict:
         """
         Calculate the strength/quality of keystroke patterns with detailed analysis
+        
+        Args:
+            samples: List of keystroke samples (can be dicts OR lists of events)
         
         Returns:
             Dictionary with strength metrics and recommendations
@@ -419,66 +476,31 @@ class KeystrokeDynamicsAnalyzer:
         
         return result
 
-
 # ===========================
 # GLOBAL ANALYZER INSTANCE
 # ===========================
 
-
 keystroke_analyzer = KeystrokeDynamicsAnalyzer()
-
 
 # ===========================
 # CONVENIENCE FUNCTIONS
 # ===========================
 
-
-def enroll_keystroke_pattern(samples_data: List[Dict], user_id: int = None, username: str = None) -> Dict:
-    """
-    Enroll keystroke pattern from multiple samples
-    
-    Args:
-        samples_data: List of keystroke sample dictionaries
-        user_id: User ID for storage
-        username: Username for storage
-    
-    Returns:
-        Enrollment profile
-    """
+def enroll_keystroke_pattern(samples_data, user_id: int = None, username: str = None) -> Dict:
+    """Enroll keystroke pattern from multiple samples"""
     return keystroke_analyzer.enroll_pattern(samples_data, user_id, username)
 
-
-def verify_keystroke_pattern(enrolled_profile: Dict, sample_data: Dict) -> Tuple[bool, float]:
-    """
-    Verify keystroke sample against enrolled profile
-    
-    Args:
-        enrolled_profile: User's enrolled profile
-        sample_data: New keystroke sample
-    
-    Returns:
-        (verified, confidence)
-    """
+def verify_keystroke_pattern(enrolled_profile: Dict, sample_data) -> Tuple[bool, float]:
+    """Verify keystroke sample against enrolled profile"""
     return keystroke_analyzer.verify_pattern(enrolled_profile, sample_data)
 
-
-def analyze_pattern_strength(samples_data: List[Dict]) -> Dict:
-    """
-    Analyze the strength of keystroke patterns
-    
-    Args:
-        samples_data: List of keystroke samples
-    
-    Returns:
-        Strength analysis dictionary
-    """
+def analyze_pattern_strength(samples_data) -> Dict:
+    """Analyze the strength of keystroke patterns"""
     return keystroke_analyzer.calculate_pattern_strength(samples_data)
-
 
 # ===========================
 # SERVICE INITIALIZATION
 # ===========================
-
 
 print("\n" + "=" * 60)
 print("🚀 [INIT] Keystroke Dynamics Service Initialized")

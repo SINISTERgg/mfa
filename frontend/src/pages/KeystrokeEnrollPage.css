@@ -1,0 +1,725 @@
+.keystroke-enroll-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  padding: 2rem;
+}
+
+.keystroke-enroll-container .enroll-header {
+  max-width: 1000px;
+  margin: 0 auto 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.keystroke-enroll-container .btn-back-modern {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+}
+
+.keystroke-enroll-container .btn-back-modern:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateX(-4px);
+}
+
+.keystroke-enroll-container .header-badge {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  padding: 0.5rem 1.5rem;
+  border-radius: 20px;
+  color: white;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.keystroke-enroll-container .enroll-main {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.keystroke-enroll-container .enroll-card {
+  background: white;
+  border-radius: 24px;
+  padding: 3rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+/* ==================== HEADER ==================== */
+.keystroke-enroll-container .card-header-modern {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.keystroke-enroll-container .header-icon-large {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 1.5rem;
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  color: white;
+  box-shadow: 0 10px 30px rgba(16, 185, 129, 0.3);
+}
+
+.keystroke-enroll-container .card-header-modern h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #1e293b;
+  margin-bottom: 0.5rem;
+}
+
+.keystroke-enroll-container .card-header-modern p {
+  font-size: 1.1rem;
+  color: #64748b;
+}
+
+/* ==================== PROGRESS STEPS ==================== */
+.keystroke-enroll-container .progress-steps-modern {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 3rem;
+  padding: 0 2rem;
+}
+
+.keystroke-enroll-container .step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  position: relative;
+  z-index: 1;
+}
+
+.keystroke-enroll-container .step-circle {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.25rem;
+  transition: all 0.3s;
+  border: 3px solid #e2e8f0;
+}
+
+.keystroke-enroll-container .step-item.active .step-circle {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border-color: #10b981;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.keystroke-enroll-container .step-item.completed .step-circle {
+  background: #10b981;
+  color: white;
+  border-color: #10b981;
+}
+
+.keystroke-enroll-container .step-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.keystroke-enroll-container .step-item.active .step-label {
+  color: #10b981;
+}
+
+.keystroke-enroll-container .step-item.completed .step-label {
+  color: #10b981;
+}
+
+.keystroke-enroll-container .step-line {
+  flex: 1;
+  height: 3px;
+  background: #e2e8f0;
+  margin: 0 1rem;
+  position: relative;
+  top: -25px;
+}
+
+/* ==================== KEYSTROKE SECTION ==================== */
+.keystroke-section-modern {
+  margin-bottom: 2rem;
+  min-height: 500px;
+}
+
+.typing-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+}
+
+/* Attempt Counter */
+.attempt-counter {
+  text-align: center;
+  width: 100%;
+}
+
+.counter-circles {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.counter-circle {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  border: 3px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #94a3b8;
+  transition: all 0.3s;
+}
+
+.counter-circle.active {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  animation: pulse-circle 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-circle {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.counter-circle.completed {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+}
+
+.counter-text {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* Passphrase Display */
+.passphrase-display {
+  width: 100%;
+  max-width: 700px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.05));
+  border: 2px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.passphrase-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 1rem;
+}
+
+.passphrase-label svg {
+  color: #10b981;
+}
+
+.passphrase-text {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.6;
+  font-family: 'Courier New', monospace;
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+}
+
+/* Typing Input */
+.typing-input-container {
+  width: 100%;
+  max-width: 700px;
+}
+
+.typing-input {
+  width: 100%;
+  min-height: 120px;
+  padding: 1.5rem;
+  border: 3px solid #e2e8f0;
+  border-radius: 16px;
+  font-size: 1.25rem;
+  font-family: 'Courier New', monospace;
+  color: #1e293b;
+  resize: vertical;
+  transition: all 0.3s;
+  line-height: 1.6;
+}
+
+.typing-input:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+}
+
+.typing-input::placeholder {
+  color: #cbd5e1;
+}
+
+.input-stats {
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 12px;
+}
+
+.stat-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.stat-label {
+  font-size: 0.95rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #10b981;
+}
+
+/* Typing Actions */
+.typing-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.btn-clear,
+.btn-submit {
+  padding: 0.875rem 1.75rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-clear {
+  background: #f1f5f9;
+  color: #475569;
+  border: 2px solid #e2e8f0;
+}
+
+.btn-clear:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+}
+
+.btn-submit {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.btn-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==================== PREVIEW AREA ==================== */
+.preview-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+}
+
+.preview-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1e293b;
+  text-align: center;
+}
+
+.keystroke-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  width: 100%;
+  max-width: 700px;
+}
+
+.keystroke-preview-item {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.05));
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  transition: all 0.3s;
+}
+
+.keystroke-preview-item:hover {
+  border-color: #10b981;
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.preview-number {
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.preview-stats {
+  margin-bottom: 1rem;
+}
+
+.preview-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.preview-stat .stat-label {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.preview-stat .stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #10b981;
+}
+
+.preview-check {
+  font-size: 2rem;
+  color: #10b981;
+}
+
+.passphrase-verification {
+  text-align: center;
+  width: 100%;
+  max-width: 700px;
+  padding: 2rem;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.05));
+  border-radius: 16px;
+  border: 2px solid #e2e8f0;
+}
+
+.verify-icon {
+  font-size: 3rem;
+  color: #10b981;
+  margin-bottom: 1rem;
+}
+
+.passphrase-verification p {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 1rem;
+}
+
+.passphrase-used {
+  font-size: 1rem;
+  color: #64748b;
+  font-family: 'Courier New', monospace;
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-top: 1rem;
+}
+
+/* ==================== SUCCESS ANIMATION ==================== */
+.success-animation {
+  text-align: center;
+  padding: 4rem 2rem;
+  animation: fadeInUp 0.6s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.success-checkmark {
+  width: 120px;
+  height: 120px;
+  margin: 0 auto 2rem;
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4rem;
+  color: white;
+  box-shadow: 0 10px 40px rgba(16, 185, 129, 0.4);
+  animation: scaleIn 0.5s ease-out;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+.success-animation h2 {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #1e293b;
+  margin-bottom: 0.5rem;
+}
+
+.success-animation p {
+  font-size: 1.1rem;
+  color: #64748b;
+  margin-bottom: 2rem;
+}
+
+.success-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.detail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 12px;
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.detail-item svg {
+  color: #10b981;
+  font-size: 1.5rem;
+}
+
+/* ==================== INSTRUCTIONS ==================== */
+.keystroke-enroll-container .instructions-modern {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.05));
+  border: 2px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.keystroke-enroll-container .instructions-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 1.25rem;
+}
+
+.keystroke-enroll-container .instructions-header svg {
+  color: #10b981;
+  font-size: 1.25rem;
+}
+
+.keystroke-enroll-container .instructions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.keystroke-enroll-container .instruction-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: white;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  color: #475569;
+  transition: all 0.3s;
+}
+
+.keystroke-enroll-container .instruction-item:hover {
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.keystroke-enroll-container .instruction-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1.25rem;
+}
+
+/* ==================== ACTION BUTTONS ==================== */
+.keystroke-enroll-container .action-buttons-modern {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.keystroke-enroll-container .btn-primary-modern,
+.keystroke-enroll-container .btn-secondary-modern {
+  padding: 1rem 2rem;
+  border: none;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.keystroke-enroll-container .btn-primary-modern {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.keystroke-enroll-container .btn-primary-modern:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.keystroke-enroll-container .btn-primary-modern:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.keystroke-enroll-container .btn-secondary-modern {
+  background: #f1f5f9;
+  color: #475569;
+  border: 2px solid #e2e8f0;
+}
+
+.keystroke-enroll-container .btn-secondary-modern:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+}
+
+.keystroke-enroll-container .button-group-modern {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.keystroke-enroll-container .btn-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 768px) {
+  .keystroke-enroll-container {
+    padding: 1rem;
+  }
+
+  .keystroke-enroll-container .enroll-card {
+    padding: 2rem 1.5rem;
+  }
+
+  .keystroke-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .keystroke-enroll-container .instructions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .keystroke-enroll-container .button-group-modern {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .keystroke-enroll-container .btn-primary-modern,
+  .keystroke-enroll-container .btn-secondary-modern {
+    width: 100%;
+  }
+
+  .typing-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .btn-clear,
+  .btn-submit {
+    width: 100%;
+    justify-content: center;
+  }
+}

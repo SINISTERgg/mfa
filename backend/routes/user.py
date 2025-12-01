@@ -1,21 +1,28 @@
 import sys
 import os
 
-# Add backend directory to Python path
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 from flask import Blueprint, request, jsonify
-from models import User, BackupCode, LoginHistory, db
+# ✅ Import db from extensions, not models
+from extensions import db
+from models import User, BackupCode, LoginHistory , VoiceTemplate
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 import pyotp
 import qrcode
 from io import BytesIO
 import base64
+import json
+from services.voice_recognition import (
+    voice_service_v2,           # main singleton
+    SecurityProfile,
+)
 
 user_bp = Blueprint('user', __name__)
+
 
 # ===========================
 # USER PROFILE
@@ -192,92 +199,79 @@ def enroll_face():
 # VOICE RECOGNITION
 # ===========================
 
-@user_bp.route('/enroll/voice', methods=['POST', 'OPTIONS'])
+@user_bp.route("/enroll/voice", methods=["POST", "OPTIONS"])
 @jwt_required()
 def enroll_voice():
-    """Enroll voice recognition"""
-    if request.method == 'OPTIONS':
-        return '', 200
-    
+    """Enroll a user's voice. Expects JSON: { "voice_audio": "<base64 webm>" }"""
+    if request.method == "OPTIONS":
+        return "", 200
+
     try:
-        print("\n" + "="*60)
-        print("🎤 [VOICE ENROLL] Starting voice enrollment")
-        
-        user_id = get_jwt_identity()
-        user = User.query.get(user_id)
-        
+        current_user_id = get_jwt_identity()
+        user: User = User.query.get(current_user_id)
         if not user:
-            return jsonify({'error': 'User not found'}), 404
-        
+            return jsonify({"error": "User not found"}), 404
+
+        data = request.get_json() or {}
+        base64_audio = data.get("voice_audio")
+        if not base64_audio:
+            return jsonify({"error": "Missing 'voice_audio' field"}), 400
+
+        print("\n" + "=" * 60)
+        print("🎤 [VOICE ENROLL] Starting voice enrollment")
         print(f"👤 [USER] {user.username} (ID: {user.id})")
-        
-        # Get voice audio from request
-        voice_audio = None
-        
-        if request.is_json:
-            data = request.get_json()
-            voice_audio = data.get('voice_audio')
-            print("📦 [FORMAT] JSON request")
-        else:
-            voice_audio = request.form.get('voice_audio')
-            print("📦 [FORMAT] FormData request")
-        
-        if not voice_audio:
-            print("❌ [ERROR] No voice audio provided")
-            return jsonify({'error': 'Voice audio is required'}), 400
-        
-        print(f"📏 [SIZE] Audio size: {len(voice_audio)} characters")
-        
-        # Import voice service with fallback
-        try:
-            from services.voice_recognition import voice_service
-        except ImportError as ie:
-            print(f"⚠️ [IMPORT WARNING] {str(ie)}")
-            import importlib.util
-            spec = importlib.util.spec_from_file_location(
-                "voice_recognition_service",
-                os.path.join(backend_dir, "services", "voice_recognition.py")
-            )
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            voice_service = module.voice_service
-        
-        # Extract voice features
-        print("🔍 [EXTRACT] Extracting voice features...")
-        features, error, saved_path = voice_service.extract_features(
-            voice_audio,
-            user_id=user.id,
+        print("📦 [FORMAT] JSON request")
+        print(f"📏 [SIZE] Audio size: {len(base64_audio)} characters")
+
+        # Extract features & optionally save raw audio
+        feats, meta, saved_path = voice_service_v2.extract_features(
+            base64_audio=base64_audio,
+            user_id=str(user.id),
             username=user.username,
-            save_audio=True
+            save_audio=True,
+            profile=SecurityProfile.BALANCED,
         )
-        
-        if error:
-            print(f"❌ [ERROR] {error}")
-            return jsonify({'error': error}), 400
-        
-        # Serialize and store features
-        print("💾 [SAVE] Saving features to database...")
-        user.voice_embedding = voice_service.serialize_features(features)
+
+        # Serialize features for DB
+        features_str = voice_service_v2.serialize_features(feats)
+
+        # Upsert voice template row
+        template = VoiceTemplate.query.filter_by(user_id=user.id).first()
+        if template is None:
+            template = VoiceTemplate(user_id=user.id)
+
+        template.features = features_str
+        template.meta_json = json.dumps(meta)
+        template.audio_path = saved_path
+        db.session.add(template)
+
+        # ✅ ALSO update flags on User so UI and login can see it
         user.voice_enrolled = True
-        
+        user.voice_embedding = features_str  # keep in User for backward compatibility
+        user.updated_at = datetime.utcnow()
+
         db.session.commit()
-        
-        print("✅ [SUCCESS] Voice enrolled successfully")
-        print("="*60 + "\n")
-        
-        return jsonify({
-            'message': 'Voice enrolled successfully',
-            'user': user.to_dict()
-        }), 200
-        
+
+        print("✅ [VOICE ENROLL] Voice enrolled successfully")
+        print(f"📊 [QUALITY] {meta.get('quality_score')}, duration={meta.get('duration_sec')}s")
+        print("=" * 60 + "\n")
+
+        return jsonify(
+            {
+                "message": "Voice enrolled successfully",
+                "quality_score": meta.get("quality_score"),
+                "duration_sec": meta.get("duration_sec"),
+                "user": user.to_dict(),
+            }
+        ), 200
+
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"❌ [ERROR] {str(e)}")
-        import traceback
-        traceback.print_exc()
-        print("="*60 + "\n")
-        return jsonify({'error': str(e)}), 500
-
+        print("Voice enroll error:", e)
+        return jsonify({"error": "Internal server error"}), 500
 
 # ===========================
 # OTP/TOTP
@@ -328,37 +322,90 @@ def enroll_otp():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@user_bp.route('/otp/generate', methods=['GET'])
+@jwt_required()
+def generate_otp_qr():
+    """Generate TOTP secret and QR code for the logged-in user."""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # Create a new secret if user does not have one yet
+        if not getattr(user, "otp_secret", None):
+            user.otp_secret = pyotp.random_base32()
+            db.session.commit()
+
+        secret = user.otp_secret
+
+        # Build TOTP provisioning URI
+        totp = pyotp.TOTP(secret)
+        uri = totp.provisioning_uri(
+            name=user.email or user.username,
+            issuer_name="MFA Authentication System"
+        )
+
+        # Generate QR as PNG in memory
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(uri)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        img_bytes = buffer.getvalue()
+        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+        data_url = f"data:image/png;base64,{img_b64}"
+
+        return jsonify({
+            "qr_code": data_url,
+            "secret": secret
+        }), 200
+
+    except Exception as e:
+        print("Error generating OTP QR:", e)
+        return jsonify({"error": "Failed to generate QR code"}), 500
+
 # ===========================
 # GESTURE RECOGNITION
 # ===========================
-
 @user_bp.route('/enroll/gesture', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def enroll_gesture():
-    """Enroll gesture pattern with STRICT verification"""
+    """Enroll gesture pattern with STRICT/BALANCED verification."""
     if request.method == 'OPTIONS':
         return '', 200
-    
+
     try:
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("✋ [GESTURE ENROLL] Starting gesture enrollment")
-        
+
         user_id = get_jwt_identity()
         user = User.query.get(user_id)
-        
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        
+
         print(f"👤 [USER] {user.username} (ID: {user.id})")
-        
-        data = request.get_json()
-        gesture_data = data.get('gesture')
-        
-        if not gesture_data:
-            return jsonify({'error': 'Gesture data is required'}), 400
-        
-        print(f"📊 [POINTS] {len(gesture_data.get('points', []))} points")
-        
+
+        if not request.is_json:
+            print("❌ [ERROR] Request content type is not JSON")
+            return jsonify({'error': 'Request must be JSON'}), 400
+
+        data = request.get_json(silent=True) or {}
+        print(f"🧾 [RAW DATA] {data}")
+
+        # Frontend now sends { "points": [...] }
+        points = data.get('points')
+        if not points or not isinstance(points, list):
+            print("❌ [ERROR] Gesture points are missing or invalid")
+            return jsonify({'error': 'Gesture points are required'}), 400
+
+        gesture_data = {'points': points}
+
+        total_points = len(points)
+        print(f"📊 [POINTS] {total_points} points in gesture")
+
         # Import gesture service
         try:
             from services.gesture_recognition import gesture_service
@@ -366,48 +413,49 @@ def enroll_gesture():
             import importlib.util
             spec = importlib.util.spec_from_file_location(
                 "gesture_recognition_service",
-                os.path.join(backend_dir, "services", "gesture_recognition.py")
+                os.path.join(backend_dir, "services", "gesture_recognition.py"),
             )
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             gesture_service = module.gesture_service
-        
+
         # Extract features
         print("🔍 [EXTRACT] Extracting gesture features...")
         features, error, saved_path = gesture_service.extract_features(
             gesture_data,
             user_id=user.id,
             username=user.username,
-            save_pattern=True
+            save_pattern=True,
         )
-        
+
         if error:
             print(f"❌ [ERROR] {error}")
             return jsonify({'error': error}), 400
-        
+
         # Serialize and store
         print("💾 [SAVE] Saving features to database...")
         user.gesture_features = gesture_service.serialize_features(features)
         user.gesture_enrolled = True
         user.gesture_enrolled_at = datetime.utcnow()
-        
+
         db.session.commit()
-        
+
         print("✅ [SUCCESS] Gesture enrolled successfully")
-        print("="*60 + "\n")
-        
+        print("=" * 60 + "\n")
+
         return jsonify({
             'message': 'Gesture enrolled successfully',
-            'user': user.to_dict()
+            'user': user.to_dict(),
         }), 200
-        
+
     except Exception as e:
         db.session.rollback()
         print(f"❌ [ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
-        print("="*60 + "\n")
-        return jsonify({'error': str(e)}), 500
+        print("=" * 60 + "\n")
+        return jsonify({'error': 'Internal server error'}), 500
+
 
 
 # ===========================
@@ -548,34 +596,46 @@ def regenerate_backup_codes():
 @user_bp.route('/login-history', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_login_history():
-    """Get login history"""
+    """Get user's login history"""
     if request.method == 'OPTIONS':
         return '', 200
     
     try:
         user_id = get_jwt_identity()
-        limit = request.args.get('limit', 10, type=int)
+        limit = request.args.get('limit', 50, type=int)
         
+        print(f"📊 [LOGIN HISTORY] Fetching history for user_id: {user_id}, limit: {limit}")
+        
+        # Get login history from database
         history = LoginHistory.query.filter_by(user_id=user_id)\
             .order_by(LoginHistory.login_time.desc())\
             .limit(limit)\
             .all()
         
+        history_list = [record.to_dict() for record in history]
+        
+        print(f"✅ [LOGIN HISTORY] Found {len(history_list)} records")
+        
         return jsonify({
-            'history': [h.to_dict() for h in history]
+            'history': history_list,
+            'total': len(history_list)
         }), 200
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"❌ [LOGIN HISTORY] Error: {str(e)}") 
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'history': []}), 500
+
 
 # ===========================
 # UNENROLL
 # ===========================
 
-@user_bp.route('/unenroll/<method>', methods=['POST', 'OPTIONS'])
+@user_bp.route('/unenroll/<method>', methods=['DELETE', 'OPTIONS'])
 @jwt_required()
 def unenroll_method(method):
-    """Unenroll MFA method"""
+    """Remove an enrolled authentication method"""
     if request.method == 'OPTIONS':
         return '', 200
     
@@ -586,31 +646,55 @@ def unenroll_method(method):
         if not user:
             return jsonify({'error': 'User not found'}), 404
         
-        if method == 'face':
-            user.face_enrolled = False
-            user.face_encoding = None
-        elif method == 'voice':
-            user.voice_enrolled = False
-            user.voice_embedding = None
-        elif method == 'otp':
-            user.otp_enrolled = False
-            user.otp_secret = None
-        elif method == 'gesture':
-            user.gesture_enrolled = False
-            user.gesture_features = None
-        elif method == 'keystroke':
-            user.keystroke_enrolled = False
-            user.keystroke_features = None
-        else:
+        # Map method names to database fields
+        method_mapping = {
+            'face': 'face_enrolled',
+            'voice': 'voice_enrolled',
+            'gesture': 'gesture_enrolled',
+            'keystroke': 'keystroke_enrolled',
+            'totp': 'otp_enrolled'
+        }
+        
+        if method not in method_mapping:
             return jsonify({'error': 'Invalid method'}), 400
+        
+        field_name = method_mapping[method]
+        
+        # Check if method is enrolled
+        if not getattr(user, field_name, False):
+            return jsonify({'error': 'Method not enrolled'}), 400
+        
+        # Unenroll the method
+        setattr(user, field_name, False)
+        
+        # Also clear the related data
+        if method == 'face':
+            user.face_encoding = None
+            user.face_image_path = None
+            user.face_enrolled_at = None
+        elif method == 'voice':
+            user.voice_embedding = None
+            VoiceTemplate.query.filter_by(user_id=user.id).delete()
+        elif method == 'gesture':
+            user.gesture_features = None
+            user.gesture_enrolled_at = None
+        elif method == 'keystroke':
+            user.keystroke_features = None
+            user.keystroke_passphrase = None
+            user.keystroke_enrolled_at = None
+        elif method == 'totp':
+            user.otp_secret = None
         
         db.session.commit()
         
+        print(f"✅ [UNENROLL] User {user.username} unenrolled from {method}")
+        
         return jsonify({
-            'message': f'{method.capitalize()} disabled',
+            'message': f'{method.capitalize()} authentication removed successfully',
             'user': user.to_dict()
         }), 200
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ [UNENROLL] Error: {str(e)}")
         return jsonify({'error': str(e)}), 500

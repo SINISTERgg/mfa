@@ -1,27 +1,42 @@
 from flask import Blueprint, request, jsonify
-from models import User, BackupCode, LoginHistory, db
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
+from extensions import db
+from models import User, BackupCode, LoginHistory, VoiceTemplate
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    jwt_required,
+    get_jwt_identity,
+)
 from datetime import datetime, timedelta
 import secrets
 import jwt as pyjwt
+import json
+
+from services.voice_recognition import (
+    voice_service_v2,
+    SecurityProfile,
+)
 
 auth_bp = Blueprint('auth', __name__)
 
-# MFA Token Configuration
+# -------------------------------------------------------------------
+# MFA token helpers
+# -------------------------------------------------------------------
+
 MFA_TOKEN_SECRET = 'mfa-secret-key-change-in-production'
 MFA_TOKEN_EXPIRY = 300  # 5 minutes
 
+
 def create_mfa_token(user_id):
-    """Create a temporary MFA token with user_id encoded"""
     payload = {
         'user_id': user_id,
         'exp': datetime.utcnow() + timedelta(seconds=MFA_TOKEN_EXPIRY),
-        'iat': datetime.utcnow()
+        'iat': datetime.utcnow(),
     }
     return pyjwt.encode(payload, MFA_TOKEN_SECRET, algorithm='HS256')
 
+
 def decode_mfa_token(token):
-    """Decode and verify MFA token, return user_id"""
     try:
         payload = pyjwt.decode(token, MFA_TOKEN_SECRET, algorithms=['HS256'])
         return payload['user_id']
@@ -30,118 +45,211 @@ def decode_mfa_token(token):
     except pyjwt.InvalidTokenError:
         raise Exception('Invalid MFA token')
 
+
+
+def log_login_attempt(user_id, method_type, success, confidence=None):
+    """Helper to record a login attempt in LoginHistory; non-fatal on errors."""
+    try:
+        record = LoginHistory(
+            user_id=user_id,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent'),
+            method_type=method_type,  # ✅ FIXED
+            success=bool(success)
+        )
+        # Attach optional confidence if the model supports it (safe attempt)
+        if confidence is not None:
+            try:
+                setattr(record, 'confidence', float(confidence))
+            except Exception:
+                # Model may not have a 'confidence' field; ignore silently
+                pass
+
+        db.session.add(record)
+        db.session.commit()
+    except Exception as e:
+        # Rollback to keep DB consistent and avoid breaking authentication flow
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print(f"❌ [LOG] Failed to record login attempt: {e}")
+
+
 # ===========================
 # REGISTRATION
 # ===========================
 
-@auth_bp.route('/register', methods=['POST', 'OPTIONS'])
+
+@auth_bp.route('/register', methods=['POST'])
 def register():
-    """Register a new user and generate backup codes"""
-    if request.method == 'OPTIONS':
-        return '', 200
-    
+    """Register a new user"""
     try:
         data = request.get_json()
         
-        if not data.get('username') or not data.get('email') or not data.get('password'):
-            return jsonify({'error': 'Username, email, and password are required'}), 400
+        # Validate required fields
+        if not data or not all(k in data for k in ['username', 'email', 'password']):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        # Check if user already exists
+        if User.query.filter_by(email=data['email']).first():
+            return jsonify({'error': 'Email already registered'}), 400
         
         if User.query.filter_by(username=data['username']).first():
-            return jsonify({'error': 'Username already exists'}), 400
+            return jsonify({'error': 'Username already taken'}), 400
         
-        if User.query.filter_by(email=data['email']).first():
-            return jsonify({'error': 'Email already exists'}), 400
-        
-        user = User(
+        # Create new user
+        new_user = User(
             username=data['username'],
-            email=data['email'],
-            full_name=data.get('full_name', '')
+            email=data['email']
         )
-        user.set_password(data['password'])
+        new_user.set_password(data['password'])
         
-        db.session.add(user)
-        db.session.flush()
-        
-        # Generate backup codes
-        plain_codes = []
-        for _ in range(10):
-            code = BackupCode.generate_code()
-            plain_codes.append(code)
-            
-            backup_code = BackupCode(user_id=user.id)
-            backup_code.set_code(code)
-            db.session.add(backup_code)
-        
+        # ✅ FIRST: Add user to database and commit to get user.id
+        db.session.add(new_user)
         db.session.commit()
         
+        # ✅ NOW: Generate backup codes (user.id exists now)
+        backup_codes = new_user.generate_backup_codes()
+        db.session.commit()
+        
+        # Generate tokens for auto-login
+        access_token = create_access_token(identity=new_user.id)
+        refresh_token = create_refresh_token(identity=new_user.id)
+        
+        print(f"✅ [REGISTER] User created: {new_user.username}")
+        
+        # ✅ Return backup codes along with tokens
         return jsonify({
-            'message': 'User registered successfully',
-            'user': user.to_dict(),
-            'backup_codes': plain_codes
+            'message': 'Registration successful',
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'backup_codes': backup_codes,
+            'user': new_user.to_dict()
         }), 201
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        print(f"❌ [REGISTER] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Registration failed'}), 500
+
 
 # ===========================
 # LOGIN (Step 1: Password)
 # ===========================
 
-@auth_bp.route('/login', methods=['POST', 'OPTIONS'])
+
+@auth_bp.route('/login', methods=['POST'])
 def login():
-    """Step 1: Verify username and password, return enrolled methods"""
-    if request.method == 'OPTIONS':
-        return '', 200
-    
+    """User login endpoint"""
     try:
         data = request.get_json()
         
-        if not data.get('username') or not data.get('password'):
-            return jsonify({'error': 'Username and password are required'}), 400
+        # ✅ Add debug logging
+        print("\n" + "="*60)
+        print("🔐 [LOGIN] Login attempt")
+        print(f"📥 [DATA] Received: {data}")
+        print("="*60)
         
-        user = User.query.filter_by(username=data['username']).first()
+        # Validate required fields
+        if not data:
+            print("❌ [ERROR] No data received")
+            return jsonify({'error': 'No data provided'}), 400
         
-        if not user or not user.check_password(data['password']):
-            return jsonify({'error': 'Invalid username or password'}), 401
+        if 'email' not in data:
+            print("❌ [ERROR] Missing email field")
+            return jsonify({'error': 'Email is required'}), 400
+            
+        if 'password' not in data:
+            print("❌ [ERROR] Missing password field")
+            return jsonify({'error': 'Password is required'}), 400
         
-        if not user.is_active:
-            return jsonify({'error': 'Account is deactivated'}), 403
+        email = data.get('email')
+        password = data.get('password')
         
-        # Generate MFA token
-        mfa_token = create_mfa_token(user.id)
+        print(f"📧 [EMAIL] {email}")
+        print(f"🔑 [PASSWORD] {'*' * len(password)} ({len(password)} chars)")
         
-        # ✅ Get enrolled MFA methods
-        enrolled_methods = []
+        # Find user
+        user = User.query.filter_by(email=email).first()
+        
+        if not user:
+            print(f"❌ [ERROR] User not found: {email}")
+            return jsonify({'error': 'Invalid email or password'}), 400
+        
+        print(f"✅ [USER] Found: {user.username} (ID: {user.id})")
+        
+        # Check password
+        if not user.check_password(password):
+            print(f"❌ [ERROR] Invalid password for user: {user.username}")
+            return jsonify({'error': 'Invalid email or password'}), 400
+        
+        print(f"✅ [PASSWORD] Correct")
+        
+        # Check if MFA is required
+        mfa_methods = []
         if user.face_enrolled:
-            enrolled_methods.append('face')
+            mfa_methods.append('face')
         if user.voice_enrolled:
-            enrolled_methods.append('voice')
-        if user.otp_enrolled:
-            enrolled_methods.append('otp')
+            mfa_methods.append('voice')
         if user.gesture_enrolled:
-            enrolled_methods.append('gesture')
+            mfa_methods.append('gesture')
         if user.keystroke_enrolled:
-            enrolled_methods.append('keystroke')
+            mfa_methods.append('keystroke')
+        if user.otp_enrolled:  # ✅ FIXED: was totp_enabled
+            mfa_methods.append('totp')
         
-        # Always allow backup codes
-        enrolled_methods.append('backup_code')
+        print(f"🔐 [MFA] Enrolled methods: {mfa_methods}")
         
-        return jsonify({
-            'message': 'Password verified. Please complete MFA.',
-            'mfa_token': mfa_token,
-            'user_id': user.id,
-            'username': user.username,
-            'enrolled_methods': enrolled_methods,
-            'requires_mfa': True
-        }), 200
+        if mfa_methods:
+            # MFA required
+            mfa_token = create_mfa_token(user.id)
+            print(f"✅ [MFA] Token generated: {mfa_token[:20]}...")
+            print("="*60 + "\n")
+            
+            return jsonify({
+                'requires_mfa': True,
+                'mfa_token': mfa_token,
+                'enrolled_methods': mfa_methods
+            }), 200
+        else:
+            # No MFA, direct login
+            access_token = create_access_token(identity=user.id)
+            refresh_token = create_refresh_token(identity=user.id)
+            
+            # Update last login
+            user.last_login = datetime.utcnow()
+            db.session.commit()
+            
+            # Log login attempt
+            log_login_attempt(user.id, 'password', True, 100.0)
+            
+            print(f"✅ [LOGIN] Direct login successful")
+            print(f"🎫 [TOKEN] Access token generated")
+            print("="*60 + "\n")
+            
+            return jsonify({
+                'message': 'Login successful',
+                'access_token': access_token,
+                'refresh_token': refresh_token,
+                'user': user.to_dict()
+            }), 200
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"❌ [EXCEPTION] {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print("="*60 + "\n")
+        return jsonify({'error': 'Login failed'}), 500
+
+
 
 # ===========================
 # MFA VERIFICATION ROUTES
 # ===========================
+
 
 @auth_bp.route('/mfa/verify-face', methods=['POST', 'OPTIONS'])
 def verify_face():
@@ -220,7 +328,7 @@ def verify_face():
                 user_id=user.id,
                 ip_address=request.remote_addr,
                 user_agent=request.headers.get('User-Agent'),
-                mfa_method='face',
+                method_type='face',  # ✅ FIXED
                 success=False
             )
             db.session.add(login_record)
@@ -245,8 +353,9 @@ def verify_face():
             user_id=user.id,
             ip_address=request.remote_addr,
             user_agent=request.headers.get('User-Agent'),
-            mfa_method='face',
-            success=True
+            method_type='face',  # ✅ FIXED
+            success=True,
+            confidence=float(confidence)  # ✅ Added confidence
         )
         db.session.add(login_record)
         db.session.commit()
@@ -271,129 +380,82 @@ def verify_face():
 
 
 @auth_bp.route('/mfa/verify-voice', methods=['POST', 'OPTIONS'])
-def verify_voice():
-    """Verify voice recognition with STRICT matching"""
+def mfa_verify_voice():
+    """Verify voice as an MFA step"""
     if request.method == 'OPTIONS':
         return '', 200
-    
+
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         mfa_token = data.get('mfa_token')
-        voice_audio = data.get('voice_audio')
-        
-        print("\n" + "="*60)
-        print("🎤 [VOICE VERIFY] Starting voice verification")
-        
-        if not mfa_token:
-            return jsonify({'error': 'MFA token is required'}), 400
-        
-        if not voice_audio:
-            return jsonify({'error': 'Voice audio is required'}), 400
-        
+        base64_audio = data.get('voice_audio')
+
+        if not mfa_token or not base64_audio:
+            return jsonify({'error': 'MFA token and voice_audio are required'}), 400
+
+        # Use same helper as other MFA routes
         user_id = decode_mfa_token(mfa_token)
         user = User.query.get(user_id)
-        
-        if not user or not user.voice_enrolled:
-            print("❌ [VOICE VERIFY] Voice not enrolled for this user")
-            return jsonify({'error': 'Voice authentication not enrolled'}), 400
-        
-        print(f"👤 [USER] {user.username} (ID: {user.id})")
-        
-        # Import voice service
-        try:
-            from services.voice_recognition import voice_service
-        except ImportError:
-            import importlib.util
-            import os
-            import sys
-            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            spec = importlib.util.spec_from_file_location(
-                "voice_recognition_service",
-                os.path.join(backend_dir, "services", "voice_recognition.py")
-            )
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            voice_service = module.voice_service
-        
-        # Extract features from provided audio
-        print("🔍 [EXTRACT] Extracting features from login voice...")
-        test_features, error, _ = voice_service.extract_features(
-            voice_audio,
-            user_id=user.id,
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        template = VoiceTemplate.query.filter_by(user_id=user.id).first()
+        if not template or not template.features:
+            return jsonify({'error': 'Voice not enrolled'}), 400
+
+        known_features = voice_service_v2.deserialize_features(template.features)
+        known_meta = json.loads(template.meta_json or "{}")
+
+        probe_features, probe_meta, _ = voice_service_v2.extract_features(
+            base64_audio=base64_audio,
+            user_id=str(user.id),
             username=user.username,
-            save_audio=False
+            save_audio=False,
+            profile=SecurityProfile.BALANCED,
         )
-        
-        if error:
-            print(f"❌ [ERROR] {error}")
-            return jsonify({'error': error}), 400
-        
-        # Load enrolled voice features
-        print("📦 [LOAD] Loading enrolled voice features...")
-        stored_features = voice_service.deserialize_features(user.voice_embedding)
-        
-        # Verify voices match
-        print("🔐 [VERIFY] Comparing voices with STRICT threshold...")
-        is_match, similarity, distance = voice_service.verify_voices(
-            stored_features,
-            test_features
+
+        result = voice_service_v2.verify(
+            known_features=known_features,
+            probe_features=probe_features,
+            known_meta=known_meta,
+            probe_meta=probe_meta,
+            profile=SecurityProfile.BALANCED,
         )
-        
-        if not is_match:
-            print(f"❌ [FAILED] Voice verification failed (similarity: {similarity:.2%})")
-            
-            # Log failed attempt
-            login_record = LoginHistory(
-                user_id=user.id,
-                ip_address=request.remote_addr,
-                user_agent=request.headers.get('User-Agent'),
-                mfa_method='voice',
-                success=False
-            )
-            db.session.add(login_record)
-            db.session.commit()
-            
-            return jsonify({
-                'error': 'Voice verification failed. Please try again or use a different method.',
-                'similarity': similarity
-            }), 401
-        
-        print(f"✅ [SUCCESS] Voice verified (similarity: {similarity:.2%})")
-        
-        # Generate tokens
-        access_token = create_access_token(identity=user.id)
-        refresh_token = create_refresh_token(identity=user.id)
-        
-        user.last_login = datetime.utcnow()
-        
-        # Log successful login
-        login_record = LoginHistory(
+
+        record = LoginHistory(
             user_id=user.id,
             ip_address=request.remote_addr,
             user_agent=request.headers.get('User-Agent'),
-            mfa_method='voice',
-            success=True
+            method_type='voice',
+            success=result.is_match,
+            confidence=result.similarity * 100.0,
+            failure_reason=None if result.is_match else 'Voice mismatch',
         )
-        db.session.add(login_record)
+        db.session.add(record)
         db.session.commit()
-        
-        print("="*60 + "\n")
-        
+
+        if not result.is_match:
+            return jsonify({
+                'error': 'Voice verification failed',
+                'similarity': result.similarity,
+                'flags': result.flags,
+            }), 401
+
+        access_token = create_access_token(identity=user.id)
+        refresh_token = create_refresh_token(identity=user.id)
+
         return jsonify({
-            'message': f'Voice verified successfully (confidence: {similarity:.2%})',
+            'message': 'Voice verified successfully',
             'access_token': access_token,
             'refresh_token': refresh_token,
-            'similarity': similarity,
-            'user': user.to_dict()
+            'similarity': result.similarity,
+            'user': user.to_dict(),
         }), 200
-        
-    except Exception as e:
-        print(f"❌ [ERROR] {str(e)}")
-        import traceback
-        traceback.print_exc()
-        print("="*60 + "\n")
-        return jsonify({'error': str(e)}), 500
 
+    except Exception as e:
+        print('mfa_verify_voice error:', e)
+        return jsonify({'error': 'Internal server error'}), 500
+    
 @auth_bp.route('/mfa/verify-otp', methods=['POST', 'OPTIONS'])
 def verify_otp():
     """Verify OTP/TOTP code"""
@@ -408,19 +470,50 @@ def verify_otp():
         if not mfa_token or not otp_code:
             return jsonify({'error': 'MFA token and OTP code are required'}), 400
         
-        user_id = decode_mfa_token(mfa_token)
+        # 🔍 Decode MFA token with error handling
+        try:
+            user_id = decode_mfa_token(mfa_token)
+            if not user_id:
+                return jsonify({'error': 'Invalid MFA token'}), 401
+        except Exception as token_err:
+            print(f"MFA token decode failed: {token_err}")
+            return jsonify({'error': 'Invalid or expired MFA token'}), 401
+        
         user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        if not user.otp_enrolled:
+            return jsonify({'error': 'OTP not enrolled for this user'}), 400
         
-        if not user or not user.otp_enrolled:
-            return jsonify({'error': 'OTP not enrolled'}), 400
-        
-        # Verify OTP
+        # 🔧 Verify OTP with time window & detailed logging
         import pyotp
         totp = pyotp.TOTP(user.otp_secret)
         
-        if not totp.verify(otp_code):
-            return jsonify({'error': 'Invalid OTP code'}), 401
+        # Allow 90s window (3x30s) for clock drift
+        is_valid = totp.verify(otp_code, valid_window=3)
         
+        print(f"TOTP Debug - User: {user.id}, Secret: {user.otp_secret[:8]}..., Code: {otp_code}, Valid: {is_valid}")
+        
+        if not is_valid:
+            # Log failed attempt
+            login_record = LoginHistory(
+                user_id=user.id,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent'),
+                method_type='totp',
+                success=False,
+                failure_reason=f'Invalid OTP code: {otp_code}'
+            )
+            db.session.add(login_record)
+            db.session.commit()
+            
+            return jsonify({
+                'error': 'Invalid OTP code',
+                'code': 'OTP_INVALID',
+                'retry_after': 30
+            }), 401
+        
+        # ✅ Success - Create tokens & update user
         access_token = create_access_token(identity=user.id)
         refresh_token = create_refresh_token(identity=user.id)
         
@@ -430,8 +523,9 @@ def verify_otp():
             user_id=user.id,
             ip_address=request.remote_addr,
             user_agent=request.headers.get('User-Agent'),
-            mfa_method='otp',
-            success=True
+            method_type='totp',
+            success=True,
+            confidence=100.0
         )
         db.session.add(login_record)
         db.session.commit()
@@ -443,8 +537,17 @@ def verify_otp():
             'user': user.to_dict()
         }), 200
         
+    except pyotp.HOTPError as e:
+        print(f"TOTP HOTP Error: {e}")
+        return jsonify({'error': 'Invalid OTP secret format'}), 400
+    except ValueError as e:
+        print(f"TOTP ValueError: {e}")
+        return jsonify({'error': 'Invalid OTP code format'}), 400
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"Verify OTP unexpected error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
 
 @auth_bp.route('/mfa/verify-backup-code', methods=['POST', 'OPTIONS'])
 def verify_backup_code():
@@ -485,8 +588,9 @@ def verify_backup_code():
                     user_id=user.id,
                     ip_address=request.remote_addr,
                     user_agent=request.headers.get('User-Agent'),
-                    mfa_method='backup_code',
-                    success=True
+                    method_type='backup',  # ✅ FIXED
+                    success=True,
+                    confidence=100.0
                 )
                 db.session.add(login_record)
                 db.session.commit()
@@ -498,10 +602,26 @@ def verify_backup_code():
                     'user': user.to_dict()
                 }), 200
         
+        # Log failed attempt
+        login_record = LoginHistory(
+            user_id=user.id,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent'),
+            method_type='backup',  # ✅ FIXED
+            success=False,
+            failure_reason='Invalid backup code'
+        )
+        db.session.add(login_record)
+        db.session.commit()
+        
         return jsonify({'error': 'Invalid backup code'}), 401
         
     except Exception as e:
+        print(f"❌ [BACKUP CODE ERROR] {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
 
 @auth_bp.route('/mfa/verify-gesture', methods=['POST', 'OPTIONS'])
 def verify_gesture():
@@ -580,7 +700,7 @@ def verify_gesture():
                 user_id=user.id,
                 ip_address=request.remote_addr,
                 user_agent=request.headers.get('User-Agent'),
-                mfa_method='gesture',
+                method_type='gesture',  # ✅ FIXED
                 success=False
             )
             db.session.add(login_record)
@@ -604,8 +724,9 @@ def verify_gesture():
             user_id=user.id,
             ip_address=request.remote_addr,
             user_agent=request.headers.get('User-Agent'),
-            mfa_method='gesture',
-            success=True
+            method_type='gesture',  # ✅ FIXED
+            success=True,
+            confidence=float(similarity * 100)
         )
         db.session.add(login_record)
         db.session.commit()
@@ -626,6 +747,7 @@ def verify_gesture():
         traceback.print_exc()
         print("="*60 + "\n")
         return jsonify({'error': str(e)}), 500
+
 
 
 @auth_bp.route('/mfa/verify-keystroke', methods=['POST', 'OPTIONS'])
@@ -668,6 +790,18 @@ def verify_keystroke():
         verified, confidence = verify_keystroke_pattern(enrolled_profile, keystroke_sample)
         
         if not verified:
+            # Log failed attempt
+            login_record = LoginHistory(
+                user_id=user.id,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent'),
+                method_type='keystroke',  # ✅ FIXED
+                success=False,
+                confidence=float(confidence)
+            )
+            db.session.add(login_record)
+            db.session.commit()
+            
             return jsonify({
                 'error': 'Keystroke pattern does not match',
                 'confidence': confidence
@@ -683,8 +817,9 @@ def verify_keystroke():
             user_id=user.id,
             ip_address=request.remote_addr,
             user_agent=request.headers.get('User-Agent'),
-            mfa_method='keystroke',
-            success=True
+            method_type='keystroke',  # ✅ FIXED
+            success=True,
+            confidence=float(confidence)
         )
         db.session.add(login_record)
         db.session.commit()
@@ -700,9 +835,11 @@ def verify_keystroke():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 # ===========================
 # TOKEN REFRESH
 # ===========================
+
 
 @auth_bp.route('/refresh', methods=['POST', 'OPTIONS'])
 @jwt_required(refresh=True)
@@ -720,9 +857,11 @@ def refresh():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 # ===========================
 # LOGOUT
 # ===========================
+
 
 @auth_bp.route('/logout', methods=['POST', 'OPTIONS'])
 @jwt_required()
